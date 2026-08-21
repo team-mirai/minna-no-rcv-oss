@@ -5,7 +5,7 @@
 みんなのRCVの脆弱性を発見した場合は、詳細を公開 Issue、Pull Request、SNSなどへ投稿せず、次のいずれかの非公開窓口からご報告ください。
 
 - [GitHub Private Vulnerability Reporting](https://github.com/team-mirai/minna-no-rcv-oss/security/advisories/new)
-- メール: [support@team-mir.ai](mailto:support@team-mir.ai?subject=%5B%E3%81%BF%E3%82%93%E3%81%AA%E3%81%AERCV%5D%20Security%20Report)
+- メール: [contact@team-mir.ai](mailto:contact@team-mir.ai?subject=%5B%E3%81%BF%E3%82%93%E3%81%AA%E3%81%AERCV%5D%20Security%20Report)
 
 報告には、影響を受けるURLまたはバージョン、再現手順、想定される影響、可能であれば概念実証を含めてください。個人情報、認証情報、実際の投票データは必要最小限に留めてください。
 

@@ -94,7 +94,7 @@ export default function RootLayout({
                 ·
               </span>
               <a
-                href="mailto:support@team-mir.ai?subject=%5B%E3%81%BF%E3%82%93%E3%81%AA%E3%81%AERCV%5D%20%E9%80%9A%E5%A0%B1%E3%83%BB%E3%81%8A%E5%95%8F%E3%81%84%E5%90%88%E3%82%8F%E3%81%9B"
+                href="mailto:contact@team-mir.ai?subject=%5B%E3%81%BF%E3%82%93%E3%81%AA%E3%81%AERCV%5D%20%E9%80%9A%E5%A0%B1%E3%83%BB%E3%81%8A%E5%95%8F%E3%81%84%E5%90%88%E3%82%8F%E3%81%9B"
                 className="text-tm-teal-deep underline underline-offset-2"
               >
                 通報・お問い合わせ

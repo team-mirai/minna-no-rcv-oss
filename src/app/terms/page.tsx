@@ -7,7 +7,7 @@ export const metadata = {
 };
 
 const SUPPORT_MAILTO =
-  "mailto:support@team-mir.ai?subject=%5B%E3%81%BF%E3%82%93%E3%81%AA%E3%81%AERCV%5D%20%E9%80%9A%E5%A0%B1%E3%83%BB%E3%81%8A%E5%95%8F%E3%81%84%E5%90%88%E3%82%8F%E3%81%9B";
+  "mailto:contact@team-mir.ai?subject=%5B%E3%81%BF%E3%82%93%E3%81%AA%E3%81%AERCV%5D%20%E9%80%9A%E5%A0%B1%E3%83%BB%E3%81%8A%E5%95%8F%E3%81%84%E5%90%88%E3%82%8F%E3%81%9B";
 
 /** 見出し付きセクション（このページ専用の簡易レイアウト） */
 function Section({
@@ -207,7 +207,7 @@ export default function TermsPage() {
             href={SUPPORT_MAILTO}
             className="font-[family-name:var(--tm-font-latin)] text-tm-teal-deep underline underline-offset-2"
           >
-            support@team-mir.ai
+            contact@team-mir.ai
           </a>
         </p>
       </Section>
