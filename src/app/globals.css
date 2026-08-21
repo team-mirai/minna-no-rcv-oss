@@ -1,0 +1,262 @@
+@import "tailwindcss";
+
+/* ─── みんなのRCV デザイントークン ─────────────────────────────────────
+   移植元アプリの Team Mirai Design Tokens を移植し、汎用ツール向けに
+   ブランド非依存の命名のまま利用する（tm- プレフィックスは互換のため維持）。
+   フォントは <head> の Google Fonts <link>（Noto Sans JP / Poppins）を参照する。 */
+:root {
+  --tm-teal: #30BCA7;
+  --tm-teal-hover: #089781;
+  --tm-teal-deep: #0F8472;
+  --tm-teal-soft: #64D8C6;
+  --tm-teal-200: #BCECD3;
+  --tm-teal-100: #E2F6F3;
+  --tm-teal-50: #EEF6E2;
+
+  --tm-yellow: #F7F741;
+  --tm-yellow-pure: #FFFF00;
+  --tm-red: #E63946;
+
+  --tm-black: #000000;
+  --tm-ink: #1F2937;
+  --tm-gray-700: #333333;
+  --tm-gray-600: #4C4C4C;
+  --tm-gray-500: #666666;
+  --tm-gray-400: #939393;
+  --tm-gray-300: #B1B1B1;
+  --tm-gray-250: #CCCCCC;
+  --tm-gray-200: #D9D9D9;
+  --tm-gray-150: #E5E5E5;
+  --tm-gray-100: #F0F0F0;
+  --tm-gray-50: #F8F8F8;
+  --tm-white: #FFFFFF;
+
+  --tm-bg: var(--tm-white);
+  --tm-fg: var(--tm-black);
+  --tm-fg-muted: var(--tm-gray-500);
+  --tm-fg-faint: var(--tm-gray-400);
+  --tm-border-soft: var(--tm-gray-150);
+
+  --tm-font-jp: "Hiragino Kaku Gothic ProN", "Hiragino Kaku Gothic Std",
+    "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
+  --tm-font-jp-display: "Noto Sans JP", "Hiragino Kaku Gothic Std",
+    "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  --tm-font-latin: "Poppins", "Montserrat", "Lexend Deca",
+    "Noto Sans JP", system-ui, sans-serif;
+  --tm-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --tm-track-body: 0.04em;
+
+  --tm-shadow-card: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --tm-shadow-elev: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+@theme inline {
+  --color-tm-teal: var(--tm-teal);
+  --color-tm-teal-hover: var(--tm-teal-hover);
+  --color-tm-teal-deep: var(--tm-teal-deep);
+  --color-tm-teal-soft: var(--tm-teal-soft);
+  --color-tm-teal-200: var(--tm-teal-200);
+  --color-tm-teal-100: var(--tm-teal-100);
+  --color-tm-teal-50: var(--tm-teal-50);
+  --color-tm-red: var(--tm-red);
+  --color-tm-yellow: var(--tm-yellow);
+  --color-tm-black: var(--tm-black);
+  --color-tm-ink: var(--tm-ink);
+  --color-tm-gray-700: var(--tm-gray-700);
+  --color-tm-gray-600: var(--tm-gray-600);
+  --color-tm-gray-500: var(--tm-gray-500);
+  --color-tm-gray-400: var(--tm-gray-400);
+  --color-tm-gray-300: var(--tm-gray-300);
+  --color-tm-gray-250: var(--tm-gray-250);
+  --color-tm-gray-200: var(--tm-gray-200);
+  --color-tm-gray-150: var(--tm-gray-150);
+  --color-tm-gray-100: var(--tm-gray-100);
+  --color-tm-gray-50: var(--tm-gray-50);
+  --color-tm-white: var(--tm-white);
+  --color-tm-fg-muted: var(--tm-fg-muted);
+  --color-tm-fg-faint: var(--tm-fg-faint);
+  --color-tm-border-soft: var(--tm-border-soft);
+}
+
+/* Noto Sans JP の光学センタリング補正（party 実測: 枠内1行センタリングで約0.05em下に
+   見える）。スタンプ・バッジ・ピル等「枠内1行センタリング」テキスト専用。 */
+.tm-optical-rise {
+  position: relative;
+  top: -0.05em;
+}
+
+/* ─── Base ─────────────────────────────────────────────────────────── */
+html {
+  font-family: var(--tm-font-jp);
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  color: var(--tm-fg);
+  background: var(--tm-bg);
+  font-size: 15px;
+  line-height: 1.8;
+  letter-spacing: 0.04em;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+/* ─── Motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  /* 投票受付完了アート（BallotDoneArt）だけは Reduce Motion 時も再生する。
+     投票が記録されたことを伝える確認フィードバックであり装飾ではないため。 */
+  .tm-ballot-done [style*="animation"] {
+    animation-duration: 2.2s !important;
+  }
+}
+
+/* ─── Fade / Slide / Spin / Pulse / Rise ───────────────────────────── */
+@keyframes tm-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes tm-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes tm-spin {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
+}
+@keyframes tm-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+@keyframes tm-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── 決定スタンプの着地（大きく出て収まる） ───────────────────────── */
+@keyframes tm-verdict-stamp {
+  0% { opacity: 0; transform: scale(2.05) rotate(-8deg); }
+  38% { opacity: 1; transform: scale(0.9) rotate(0deg); }
+  58% { transform: scale(0.9) rotate(0deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+/* ─── 紙吹雪（モバイル結果ページ・px基準） ──────────────────────────── */
+@keyframes tm-fall {
+  0% { transform: translateY(-30px) rotate(0deg); }
+  100% { transform: translateY(430px) rotate(560deg); }
+}
+
+/* ─── RCV結果発表プレゼン（16:9投影・cqw基準） ──────────────────────── */
+@keyframes rcvp-stamp {
+  0% { opacity: 0; transform: scale(2.05) rotate(-8deg); }
+  38% { opacity: 1; transform: scale(.9) rotate(0deg); }
+  58% { transform: scale(.9) rotate(0deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes rcvp-fall {
+  0% { transform: translateY(-6cqw) rotate(0deg); }
+  100% { transform: translateY(64cqw) rotate(660deg); }
+}
+
+/* ─── 投票受付完了アート（投票箱アイソメアニメ・約2.2秒1回再生） ───────
+   見た目の正: 移植元アプリの ballot-done-art.html */
+@keyframes tm-iso-paper{0%{transform:translateY(-84px);opacity:0}10%{opacity:1}48%{transform:translateY(0)}72%,100%{transform:translateY(84px);opacity:1}}
+@keyframes tm-iso-box{0%,60%{transform:scale(1,1)}70%{transform:scale(1.05,.93)}80%{transform:scale(.98,1.03)}90%,100%{transform:scale(1,1)}}
+@keyframes tm-iso-shadow{0%,60%{transform:scale(.82);opacity:.5}70%{transform:scale(1.06);opacity:.75}90%,100%{transform:scale(1);opacity:.55}}
+@keyframes tm-iso-spark{0%,62%{opacity:0;transform:scale(.3)}74%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+@keyframes tm-iso-badge{0%,76%{opacity:0;transform:scale(.2)}90%{opacity:1;transform:scale(1.16)}100%{opacity:1;transform:scale(1)}}
+
+/* ─── ミント下線（見出しの強調） ─────────────────────────────────────
+   Team Mirai Design System の .tm-mint-underline を移植。 */
+.tm-mint-underline {
+  text-decoration: underline;
+  text-decoration-color: var(--tm-teal-soft);
+  text-decoration-thickness: 3px;
+  text-underline-offset: -2px;
+}
+
+/* ─── トップページ FV：ライブ開票デモ（tp-*・18秒ループ） ──────────────
+   見た目の正: デザイン案「みんなのRCVトップ v3 背景つき」。
+   1周18秒で「投票 → 過半数未達 → 高原を除外して票が箱根へ → 沖縄も除外して
+   箱根が過半数」までを再生する。全て CSS keyframes のみ（JS 不要＝Server
+   Component のまま動く）。prefers-reduced-motion 時は先頭セクションの
+   一括停止ルールで止まり、最終フレーム相当の静止画として読める。 */
+
+/* 投票者アイコン：チェックが立ち、終盤に笑顔へ変わる */
+@keyframes tp-cast { 0%, 1% { opacity: 0; transform: scale(.4); } 4%, 100% { opacity: 1; transform: scale(1); } }
+@keyframes tp-face-out { 0%, 80% { opacity: 1; } 86%, 100% { opacity: 0; } }
+@keyframes tp-face-in { 0%, 80% { opacity: 0; } 86%, 100% { opacity: 1; } }
+
+/* 各行のバー。A=富士山（据え置き）／B=箱根（移動票を受け取って伸びる）／
+   C=沖縄・D=高原（除外され、票が黄色になって流出する） */
+@keyframes tp-bar-a { 0%, 10% { width: 0; } 17%, 100% { width: 58.7%; } }
+@keyframes tp-bar-b {
+  0%, 10% { width: 0; border-radius: 9999px; }
+  17%, 44% { width: 44%; border-radius: 9999px; }
+  46%, 100% { width: 44%; border-radius: 9999px 0 0 9999px; }
+}
+@keyframes tp-bar-c {
+  0%, 10% { width: 0; background: var(--tm-teal); box-shadow: none; }
+  17%, 58% { width: 29.3%; background: var(--tm-teal); box-shadow: none; }
+  62% { width: 29.3%; background: var(--tm-yellow); box-shadow: inset 0 0 0 1.5px var(--tm-black); }
+  72%, 100% { width: 0; background: var(--tm-yellow); box-shadow: inset 0 0 0 1.5px var(--tm-black); }
+}
+@keyframes tp-bar-d {
+  0%, 10% { width: 0; background: var(--tm-teal); box-shadow: none; }
+  17%, 40% { width: 14.7%; background: var(--tm-teal); box-shadow: none; }
+  44% { width: 14.7%; background: var(--tm-yellow); box-shadow: inset 0 0 0 1.5px var(--tm-black); }
+  54%, 100% { width: 0; background: var(--tm-yellow); box-shadow: inset 0 0 0 1.5px var(--tm-black); }
+}
+/* 箱根が受け取った移動票（黄色＋黒枠） */
+@keyframes tp-bar-gain { 0%, 46% { width: 0; } 54%, 62% { width: 14.7%; } 72%, 100% { width: 44%; } }
+
+/* 決着後の行入れ替え（箱根が1位へ上がり、富士山が下がる。行ピッチ 54px） */
+@keyframes tp-row-up { 0%, 66% { transform: translateY(0); } 78%, 100% { transform: translateY(-54px); } }
+@keyframes tp-row-down { 0%, 66% { transform: translateY(0); } 78%, 100% { transform: translateY(54px); } }
+
+/* 得票数の差し替え（3票 → 4票 → 6票）と +1 / +2 チップ */
+@keyframes tp-chip1 { 0%, 46% { opacity: 0; } 52%, 60% { opacity: 1; } 66%, 100% { opacity: 0; } }
+@keyframes tp-chip2 { 0%, 66% { opacity: 0; } 72%, 100% { opacity: 1; } }
+@keyframes tp-hk-a { 0%, 44% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes tp-hk-b { 0%, 46% { opacity: 0; } 52%, 62% { opacity: 1; } 68%, 100% { opacity: 0; } }
+@keyframes tp-hk-c { 0%, 66% { opacity: 0; } 72%, 100% { opacity: 1; } }
+
+/* 除外された行の減光・取り消し線・「除外」タグ */
+@keyframes tp-row-c { 0%, 58% { opacity: 1; } 68%, 100% { opacity: .45; } }
+@keyframes tp-tag-c { 0%, 60% { opacity: 0; } 68%, 100% { opacity: 1; } }
+@keyframes tp-swap-out { 0%, 60% { opacity: 1; } 66%, 100% { opacity: 0; } }
+@keyframes tp-swap-in { 0%, 60% { opacity: 0; } 66%, 100% { opacity: 1; } }
+@keyframes tp-row-d { 0%, 40% { opacity: 1; } 50%, 100% { opacity: .45; } }
+@keyframes tp-tag-d { 0%, 42% { opacity: 0; } 50%, 100% { opacity: 1; } }
+@keyframes tp-swap-out-d { 0%, 42% { opacity: 1; } 48%, 100% { opacity: 0; } }
+@keyframes tp-swap-in-d { 0%, 42% { opacity: 0; } 48%, 100% { opacity: 1; } }
+
+/* 実況キャプション（1〜4 と決着） */
+@keyframes tp-cap1 { 0%, 20% { opacity: 1; } 26%, 100% { opacity: 0; } }
+@keyframes tp-cap2 { 0%, 22% { opacity: 0; transform: translateY(12px); } 28%, 36% { opacity: 1; transform: none; } 42%, 100% { opacity: 0; transform: none; } }
+@keyframes tp-cap3a { 0%, 38% { opacity: 0; transform: translateY(12px); } 44%, 56% { opacity: 1; transform: none; } 62%, 100% { opacity: 0; transform: none; } }
+@keyframes tp-cap3b { 0%, 58% { opacity: 0; transform: translateY(12px); } 64%, 76% { opacity: 1; transform: none; } 82%, 100% { opacity: 0; transform: none; } }
+@keyframes tp-cap4 { 0%, 82% { opacity: 0; transform: translateY(12px); } 90%, 100% { opacity: 1; transform: none; } }
+
+/* ─── FV 背景：ボケ玉（BokehBackdrop） ────────────────────────────────
+   デザイン案 v3 の WebGL シェーダー（ボケ玉）を CSS の radial-gradient で
+   再現したもの。WebGL / canvas / rAF に依存しないので SSR で完結し、
+   低スペック端末でも安全。玉はごくゆっくり横へ流れる。 */
+@keyframes tp-bokeh-drift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(6%, -2%, 0); }
+}

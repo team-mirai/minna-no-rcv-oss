@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- components/Brand.tsx の BrandMark を、CSS 変数なしの単体ファイルにしたもの -->
+  <rect width="48" height="48" rx="12" fill="#30BCA7"/>
+  <rect x="10" y="11" width="28" height="6" rx="3" fill="#FFFFFF"/>
+  <rect x="10" y="21" width="20" height="6" rx="3" fill="#FFFFFF" opacity="0.85"/>
+  <rect x="10" y="31" width="12" height="6" rx="3" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="36" cy="34" r="4" fill="#F7F741" stroke="#000000" stroke-width="1.5"/>
+</svg>
