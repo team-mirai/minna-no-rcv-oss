@@ -17,6 +17,11 @@ import { Modal } from "@/components/Modal";
 import { BallotDoneArt } from "@/components/BallotDoneArt";
 import { tapHaptic } from "@/lib/haptics";
 import {
+  getPostSelectionFocusTarget,
+  getSelectionAnnouncement,
+  type SelectionFocusTarget,
+} from "@/features/rcv/voteSelection";
+import {
   ArrowRight,
   ChartBar,
   Check,
@@ -139,6 +144,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
   const [doneOpen, setDoneOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
 
   const optById = useMemo(() => new Map(options.map((o) => [o.id, o])), [options]);
   const poolItems = useMemo(() => options.filter((o) => !order.includes(o.id)), [options, order]);
@@ -153,6 +159,12 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragMeta | null>(null); // pointermove/up が読む真実（state の遅延に依存しない）
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const poolButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const pendingSelection = useRef<{
+    focusTarget: SelectionFocusTarget;
+    announcement: string;
+  } | null>(null);
   const settleTimer = useRef<number | null>(null);
   // タッチ長押しの待機状態（HOLD_MS 経過で持ち上げ、SLOP 超過や離指でスクロールに譲る）
   const pendingTouch = useRef<{
@@ -349,10 +361,38 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
     [cancelPendingTouch, endDrag]
   );
 
-  const add = useCallback((id: string) => {
-    tapHaptic();
-    setOrder((prev) => (prev.includes(id) ? prev : [...prev, id]));
-  }, []);
+  const add = useCallback(
+    (id: string) => {
+      const option = optById.get(id);
+      if (!option || order.includes(id)) return;
+
+      tapHaptic();
+      pendingSelection.current = {
+        focusTarget: getPostSelectionFocusTarget(
+          poolItems.map((item) => item.id),
+          id
+        ),
+        announcement: getSelectionAnnouncement(option.label, order.length + 1),
+      };
+      // 同じ候補を同じ順位へ再追加した場合も、live region に新しい変更を発生させる。
+      setSelectionAnnouncement("");
+      setOrder((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    },
+    [optById, order, poolItems]
+  );
+
+  useEffect(() => {
+    const pending = pendingSelection.current;
+    if (!pending) return;
+    pendingSelection.current = null;
+
+    const focusTarget =
+      pending.focusTarget.kind === "candidate"
+        ? poolButtonRefs.current.get(pending.focusTarget.id)
+        : submitButtonRef.current;
+    (focusTarget ?? submitButtonRef.current)?.focus();
+    setSelectionAnnouncement(pending.announcement);
+  }, [order]);
   const remove = useCallback((id: string) => {
     // ドラッグ・settle 中の取り消しは index がずれるので受け付けない
     if (dragRef.current || settleTimer.current !== null) return;
@@ -540,6 +580,10 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
             <button
               key={o.id}
               type="button"
+              ref={(el) => {
+                if (el) poolButtonRefs.current.set(o.id, el);
+                else poolButtonRefs.current.delete(o.id);
+              }}
               onClick={() => add(o.id)}
               className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-3.5 py-2 text-[13px] font-bold text-tm-teal-deep transition-[background-color,color,border-color,transform] duration-150 ease-out hover:border-tm-teal hover:bg-tm-teal hover:text-white active:scale-[0.96]"
             >
@@ -549,6 +593,10 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
           ))}
         </div>
       </div>
+
+      <p role="status" aria-atomic="true" className="sr-only">
+        {selectionAnnouncement}
+      </p>
 
       <div className="flex flex-col gap-2">
         <b className="text-[13px] text-tm-teal-deep">
@@ -640,6 +688,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
 
       <div className="border-t border-tm-teal-200 pt-3 flex flex-col gap-2.5">
         <button
+          ref={submitButtonRef}
           type="button"
           // drag 中（settle 含む）は無効化：並べ替え確定前の order を送らない
           disabled={!canSubmit || submitting || drag !== null}
