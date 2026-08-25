@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowClockwise,
@@ -159,6 +159,62 @@ function ShareRow({ title }: { title: string }) {
   );
 }
 
+/**
+ * 途中経過の選択肢名（92px 固定幅）。長い選択肢は truncate されて全文を読む手段が無いので、
+ * はみ出しているときだけ hover / タップで全文をツールチップ表示する。
+ * hover は Tailwind の hover バリアント（`@media (hover: hover)`）任せにして、
+ * タップ端末で :hover が貼り付いたままになるのを避け、タップは open state で明示的に扱う。
+ */
+function LiveOptionName({ label }: { label: string }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setOverflowing(el.scrollWidth > el.clientWidth + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [label]);
+
+  // 画面のどこかを触ったら閉じる（自分のボタンは onPointerDown で伝播を止めている）。
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  return (
+    <span className="relative w-[92px] flex-none">
+      <button
+        ref={ref}
+        type="button"
+        disabled={!overflowing}
+        aria-expanded={overflowing ? open : undefined}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setOpen((v) => !v)}
+        className="peer block w-full cursor-pointer truncate text-right text-[13px] font-semibold disabled:cursor-default"
+      >
+        {label}
+      </button>
+      {overflowing && (
+        <span
+          role="tooltip"
+          className={`pointer-events-none absolute left-0 top-full z-[5] mt-1 w-max max-w-[min(260px,66vw)] rounded-[8px] bg-tm-black px-2.5 py-1.5 text-left text-[12.5px] font-semibold leading-[1.6] text-white shadow-[var(--tm-shadow-elev)] ${
+            open ? "block" : "hidden peer-hover:block peer-focus-visible:block"
+          }`}
+        >
+          {label}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function ResultsView({ slug, title, options, result, ballotCount, live }: Props) {
   const router = useRouter();
   const labelOf = useMemo(() => new Map(options.map((o) => [o.id, o.label])), [options]);
@@ -217,9 +273,7 @@ export default function ResultsView({ slug, title, options, result, ballotCount,
             const v = r1[id] ?? 0;
             return (
               <div key={id} className="flex items-center gap-2">
-                <span className="w-[92px] flex-none truncate text-right text-[13px] font-semibold">
-                  {name(id)}
-                </span>
+                <LiveOptionName label={name(id)} />
                 <div className="h-[16px] flex-1 overflow-hidden rounded-full bg-tm-gray-100">
                   <div
                     className="h-full rounded-full bg-tm-teal"
