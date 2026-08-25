@@ -161,6 +161,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const poolButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelEditButtonRef = useRef<HTMLButtonElement>(null);
   const pendingSelection = useRef<{
     focusTarget: SelectionFocusTarget;
     announcement: string;
@@ -386,11 +387,21 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
     if (!pending) return;
     pendingSelection.current = null;
 
+    const submitButton = submitButtonRef.current;
+    const cancelEditButton = cancelEditButtonRef.current;
+    // 元の送信済み順位へ戻した場合、送信ボタンは disabled になるためフォーカスできない。
+    // その場合は、次に利用できる編集終了操作へ移す。
+    const terminalFocusTarget =
+      submitButton && !submitButton.disabled
+        ? submitButton
+        : cancelEditButton && !cancelEditButton.disabled
+          ? cancelEditButton
+          : null;
     const focusTarget =
       pending.focusTarget.kind === "candidate"
-        ? poolButtonRefs.current.get(pending.focusTarget.id)
-        : submitButtonRef.current;
-    (focusTarget ?? submitButtonRef.current)?.focus();
+        ? (poolButtonRefs.current.get(pending.focusTarget.id) ?? terminalFocusTarget)
+        : terminalFocusTarget;
+    focusTarget?.focus();
     setSelectionAnnouncement(pending.announcement);
   }, [order]);
   const remove = useCallback((id: string) => {
@@ -700,6 +711,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
         </button>
         {lastSubmitted && (
           <button
+            ref={cancelEditButtonRef}
             type="button"
             disabled={submitting || drag !== null}
             onClick={cancelEdit}
