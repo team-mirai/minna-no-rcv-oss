@@ -18,7 +18,9 @@ import { BallotDoneArt } from "@/components/BallotDoneArt";
 import { tapHaptic } from "@/lib/haptics";
 import {
   getPostSelectionFocusTarget,
+  getRankChangeAnnouncement,
   getSelectionAnnouncement,
+  moveRankedOption,
   type SelectionFocusTarget,
 } from "@/features/rcv/voteSelection";
 import {
@@ -166,6 +168,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
     focusTarget: SelectionFocusTarget;
     announcement: string;
   } | null>(null);
+  const pendingRankAnnouncement = useRef<string | null>(null);
   const settleTimer = useRef<number | null>(null);
   // タッチ長押しの待機状態（HOLD_MS 経過で持ち上げ、SLOP 超過や離指でスクロールに譲る）
   const pendingTouch = useRef<{
@@ -384,25 +387,32 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
 
   useEffect(() => {
     const pending = pendingSelection.current;
-    if (!pending) return;
-    pendingSelection.current = null;
+    if (pending) {
+      pendingSelection.current = null;
 
-    const submitButton = submitButtonRef.current;
-    const cancelEditButton = cancelEditButtonRef.current;
-    // 元の送信済み順位へ戻した場合、送信ボタンは disabled になるためフォーカスできない。
-    // その場合は、次に利用できる編集終了操作へ移す。
-    const terminalFocusTarget =
-      submitButton && !submitButton.disabled
-        ? submitButton
-        : cancelEditButton && !cancelEditButton.disabled
-          ? cancelEditButton
-          : null;
-    const focusTarget =
-      pending.focusTarget.kind === "candidate"
-        ? (poolButtonRefs.current.get(pending.focusTarget.id) ?? terminalFocusTarget)
-        : terminalFocusTarget;
-    focusTarget?.focus();
-    setSelectionAnnouncement(pending.announcement);
+      const submitButton = submitButtonRef.current;
+      const cancelEditButton = cancelEditButtonRef.current;
+      // 元の送信済み順位へ戻した場合、送信ボタンは disabled になるためフォーカスできない。
+      // その場合は、次に利用できる編集終了操作へ移す。
+      const terminalFocusTarget =
+        submitButton && !submitButton.disabled
+          ? submitButton
+          : cancelEditButton && !cancelEditButton.disabled
+            ? cancelEditButton
+            : null;
+      const focusTarget =
+        pending.focusTarget.kind === "candidate"
+          ? (poolButtonRefs.current.get(pending.focusTarget.id) ?? terminalFocusTarget)
+          : terminalFocusTarget;
+      focusTarget?.focus();
+      setSelectionAnnouncement(pending.announcement);
+      return;
+    }
+
+    const rankAnnouncement = pendingRankAnnouncement.current;
+    if (!rankAnnouncement) return;
+    pendingRankAnnouncement.current = null;
+    setSelectionAnnouncement(rankAnnouncement);
   }, [order]);
   const remove = useCallback((id: string) => {
     // ドラッグ・settle 中の取り消しは index がずれるので受け付けない
@@ -411,20 +421,21 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
   }, []);
 
   // ドラッグの代替（キーボード・支援技術）：ハンドルにフォーカスして ↑↓ で1つずつ移動
-  const keyMove = useCallback((e: KeyboardEvent<HTMLElement>, id: string) => {
-    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-    e.preventDefault();
-    const delta = e.key === "ArrowUp" ? -1 : 1;
-    setOrder((prev) => {
-      const i = prev.indexOf(id);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = prev.slice();
-      next[i] = next[j];
-      next[j] = id;
-      return next;
-    });
-  }, []);
+  const keyMove = useCallback(
+    (e: KeyboardEvent<HTMLElement>, id: string) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const delta = e.key === "ArrowUp" ? -1 : 1;
+      const moved = moveRankedOption(order, id, delta);
+      const option = optById.get(id);
+      if (!moved || !option) return;
+
+      pendingRankAnnouncement.current = getRankChangeAnnouncement(option.label, moved.rank);
+      setSelectionAnnouncement("");
+      setOrder(moved.order);
+    },
+    [optById, order]
+  );
 
   /** ドラッグ中、つかんでいない行が空きを作るために退避する量（px） */
   const rowShift = (d: DragState, index: number): number => {
