@@ -511,7 +511,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
         <div className="bg-white rounded-[10px] px-3.5 py-3 flex flex-col gap-2">
           {order.map((id, i) => (
             <div key={id} className="flex items-center gap-2.5">
-              <span className="w-8 flex-none text-[15px] font-bold text-tm-teal-deep">
+              <span className="w-8 flex-none whitespace-nowrap text-[15px] font-bold text-tm-teal-deep">
                 <span className="font-[family-name:var(--tm-font-latin)]">{i + 1}</span>位
               </span>
               <b className="text-[15px] font-bold leading-[1.5]">{optById.get(id)?.label}</b>
@@ -561,7 +561,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
             <div className="self-stretch bg-tm-teal-100 rounded-[10px] px-4 py-2.5 flex flex-col gap-1.5 text-left">
               {(lastSubmitted ?? []).map((id, i) => (
                 <div key={id} className="flex items-center gap-2.5">
-                  <span className="w-8 flex-none text-[14px] font-bold text-tm-teal-deep">
+                  <span className="w-8 flex-none whitespace-nowrap text-[14px] font-bold text-tm-teal-deep">
                     <span className="font-[family-name:var(--tm-font-latin)]">{i + 1}</span>位
                   </span>
                   <b className="text-[15px] leading-[1.5]">{optById.get(id)?.label}</b>
@@ -681,7 +681,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
                   >
                     <DotsSixVertical size={20} weight="bold" />
                   </button>
-                  <span className="w-8 flex-none text-[15px] font-bold text-tm-teal-deep">
+                  <span className="w-8 flex-none whitespace-nowrap text-[15px] font-bold text-tm-teal-deep">
                     <span className="font-[family-name:var(--tm-font-latin)]">{i + 1}</span>位
                   </span>
                   <b className="flex-1 text-[15px] font-bold leading-[1.5]">{o?.label}</b>
