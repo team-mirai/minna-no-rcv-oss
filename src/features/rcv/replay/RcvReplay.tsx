@@ -205,6 +205,12 @@ export function RcvReplay({ options, tally, framed = true }: Props) {
   // 進行キャプション。
   let caption: string;
   const elimName = name(round.elim);
+  // 同数最下位だった候補の並び。多すぎるとキャプションが伸びるので3件を超えたら畳む。
+  const tiedNames = round.tiedWith.map((id) => `「${name(id)}」`);
+  const tiedLabel =
+    tiedNames.length > 3
+      ? `${tiedNames.slice(0, 2).join("")}ほか${tiedNames.length - 2}件`
+      : tiedNames.join("");
   if (round.winner && winnerShown) {
     caption = `「${name(round.winner)}」が有効票の過半数（${fmt(round.majority)}票）に到達。決定です。`;
   } else if (ri === 0) {
@@ -212,7 +218,15 @@ export function RcvReplay({ options, tally, framed = true }: Props) {
       ? "投票用紙の“1位”を集計しました。"
       : `“1位”票を集計しました。過半数（${fmt(round.majority)}票）に届いた候補はまだありません。最下位を1つずつ除外していきます。`;
   } else if (!p1) {
-    caption = `最下位の「${elimName}」（${fmt(round.moved)}票）を除外。票を“次の順位”へ移します。`;
+    // 同数だった事実と、それをどう解いたか（前ラウンド比較 / くじ）は必ず出す。
+    // 順位切れと同じで、扱いを隠さないのが本ツールの誠実さの要。
+    if (round.tiebreak === "lot") {
+      caption = `最下位が${tiedLabel}の同数で、第1ラウンドまで遡っても同数でした。事前に確定したくじ順で「${elimName}」（${fmt(round.moved)}票）を除外します。`;
+    } else if (round.tiebreak === "backward") {
+      caption = `最下位が${tiedLabel}の同数のため、前のラウンドの票数を遡って比べ、少なかった「${elimName}」（${fmt(round.moved)}票）を除外します。`;
+    } else {
+      caption = `最下位の「${elimName}」（${fmt(round.moved)}票）を除外。票を“次の順位”へ移します。`;
+    }
   } else {
     caption =
       `「${elimName}」の${fmt(round.moved)}票のうち${fmt(round.moved - round.toEx)}票が次の順位へ移りました（黄色）。` +
@@ -461,6 +475,13 @@ export function RcvReplay({ options, tally, framed = true }: Props) {
       <div className="flex min-h-[44px] items-start">
         <span className="text-[13px] leading-[1.7] text-tm-gray-700">{caption}</span>
       </div>
+
+      {/* くじが実際に使われた回だけ、順番が事前確定であることを添える。 */}
+      {round.tiebreak === "lot" && (
+        <p className="-mt-1 text-[11.5px] leading-[1.6] text-tm-gray-500">
+          くじ順は投票開始前に確定しています（投票の内容では変わりません）。
+        </p>
+      )}
 
       {!started && <RcvReplayCover onClick={start} />}
     </div>
