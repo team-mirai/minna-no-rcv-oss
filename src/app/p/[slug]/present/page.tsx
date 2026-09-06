@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPollBySlug, ensureClosedIfDue, getFinalResult } from "@/server/polls";
+import { formatCloseAt, isResultsOpen } from "@/lib/closeAt";
 import { RcvResultsPresenter } from "@/features/rcv/presenter/RcvResultsPresenter";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +15,8 @@ export const metadata: Metadata = {
 /**
  * 結果発表のプレゼンモード（16:9投影・全画面）。
  *
- * - 締切後のみ。受付中は待機画面を出す（締切前の暫定を映さない・発表の驚きを保つ、
- *   という 移植元アプリの会場スクリーンと同じ判断）。
+ * - 締切後・結果公開後のみ。それまでは待機画面を出す（締切前の暫定を映さない・発表の
+ *   驚きを保つ、という 移植元アプリの会場スクリーンと同じ判断）。
  * - 集計はサーバ側で実行し、クライアントへは Tally だけを渡す（生の個票は送らない）。
  * - 進行はクリック / ← → Space / Home / P（自動再生）。
  */
@@ -30,7 +31,9 @@ export default async function PresentPage({
   const { poll, options } = found;
 
   const status = await ensureClosedIfDue(poll);
-  if (status !== "closed") {
+  if (!isResultsOpen(status, poll.results_open_at)) {
+    // 締切済みで公開待ち（結果公開の時刻を別に決めてある）か、まだ受付中か。
+    const waitingForPublish = status === "closed";
     return (
       <main className="fixed inset-0 z-50 flex min-h-screen flex-col bg-black px-12 py-10 text-white">
         <header className="mb-12 flex items-start justify-between gap-8 border-b border-white/10 pb-8">
@@ -43,9 +46,13 @@ export default async function PresentPage({
             <span className="h-3 w-3 animate-pulse rounded-full bg-[#94a3b8]" />
             STANDBY
           </span>
-          <div className="text-6xl font-bold text-[#cbd5e1]">投票受付中</div>
+          <div className="text-6xl font-bold text-[#cbd5e1]">
+            {waitingForPublish ? "まもなく結果発表" : "投票受付中"}
+          </div>
           <p className="text-3xl font-semibold text-[#64748b]">
-            締め切ると、ここで結果発表が始まります（管理ページから締め切れます）
+            {waitingForPublish
+              ? `${poll.results_open_at ? `${formatCloseAt(poll.results_open_at)} に` : ""}結果を公開します（管理ページから前倒しもできます）`
+              : "締め切ると、ここで結果発表が始まります（管理ページから締め切れます）"}
           </p>
         </div>
       </main>
