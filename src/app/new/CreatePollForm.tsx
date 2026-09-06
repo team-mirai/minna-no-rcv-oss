@@ -24,6 +24,12 @@ const CLOSE_AT_PRESETS = [
   { label: "1週間後", ms: 7 * 24 * HOUR_MS },
 ] as const;
 
+/** 結果公開のよくある指定（締切からの差）。発表を後ろにずらしたいとき用。 */
+const RESULTS_OPEN_PRESETS = [
+  { label: "締切の1時間後", ms: HOUR_MS },
+  { label: "締切の2時間後", ms: 2 * HOUR_MS },
+] as const;
+
 /** 時刻 → datetime-local の値（YYYY-MM-DDTHH:mm・ブラウザのローカル時刻）。 */
 function toLocalInputValue(ms: number): string {
   const d = new Date(ms);
@@ -47,6 +53,8 @@ export default function CreatePollForm() {
   const [showLiveCount, setShowLiveCount] = useState(true);
   // 締切（任意）。空文字＝締切なし。datetime-local はブラウザのローカル時刻で持つ。
   const [closeAtLocal, setCloseAtLocal] = useState("");
+  // 結果公開（任意）。空文字＝締切と同時に公開。締切を決めたときだけ指定できる。
+  const [resultsOpenLocal, setResultsOpenLocal] = useState("");
   // input の min。描画時に now を読むとサーバ描画とずれるので、マウント後に入れる。
   const [minCloseAtLocal, setMinCloseAtLocal] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +121,14 @@ export default function CreatePollForm() {
     if (cleaned.length < 2) return setError("選択肢は 2 つ以上入れてください");
     const closeAt = closeAtLocal ? toIso(closeAtLocal) : null;
     if (closeAtLocal && !closeAt) return setError("締切の日時を確認してください");
+    // 結果公開は締切とセットのときだけ送る（締切なしの入力欄は出していない）。
+    const resultsOpenAt = closeAtLocal && resultsOpenLocal ? toIso(resultsOpenLocal) : null;
+    if (closeAtLocal && resultsOpenLocal && !resultsOpenAt) {
+      return setError("結果公開の日時を確認してください");
+    }
+    if (closeAt && resultsOpenAt && resultsOpenAt < closeAt) {
+      return setError("結果公開は締切以降の時刻にしてください");
+    }
     startTransition(async () => {
       try {
         // 成功時は redirect（例外として送出）。戻り値が来るのはサーバ側で弾かれたとき
@@ -123,6 +139,7 @@ export default function CreatePollForm() {
           options: cleaned,
           showLiveCount,
           closeAt,
+          resultsOpenAt,
         });
         if (res?.error) setError(res.error);
       } catch (e) {
@@ -135,6 +152,7 @@ export default function CreatePollForm() {
 
   const filledCount = options.filter((o) => o.trim().length > 0).length;
   const closeAtIso = closeAtLocal ? toIso(closeAtLocal) : null;
+  const resultsOpenIso = resultsOpenLocal ? toIso(resultsOpenLocal) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -249,7 +267,11 @@ export default function CreatePollForm() {
           {closeAtLocal && (
             <button
               type="button"
-              onClick={() => setCloseAtLocal("")}
+              onClick={() => {
+                setCloseAtLocal("");
+                // 締切なし＝結果公開の指定も意味を持たないので一緒に消す。
+                setResultsOpenLocal("");
+              }}
               className="inline-flex items-center justify-center gap-1.5 rounded-full border border-tm-gray-250 bg-white px-3.5 py-2 text-[13px] font-bold text-tm-gray-600 transition-colors hover:bg-tm-gray-50"
             >
               <X size={13} />
@@ -262,6 +284,55 @@ export default function CreatePollForm() {
             ? `${formatCloseAt(closeAtIso)} に自動で締め切ります。この日時は参加ページにも表示されます。`
             : "締切を入れると、その時刻になったら自動で受付を終了します。入れない場合は、管理ページから締め切るまで投票を受け付けます。"}
         </span>
+
+        {/* 結果の公開（締切を決めたときだけ。締切＝受付の終了、結果公開＝発表） */}
+        {closeAtLocal && (
+          <div className="mt-1 flex flex-col gap-2 border-t border-tm-border-soft pt-3">
+            <label htmlFor="resultsOpenAt" className="text-[13.5px] font-bold text-tm-teal-deep">
+              結果の公開（任意）
+            </label>
+            <input
+              id="resultsOpenAt"
+              type="datetime-local"
+              className={inputClass}
+              value={resultsOpenLocal}
+              min={closeAtLocal || undefined}
+              onChange={(e) => setResultsOpenLocal(e.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              {RESULTS_OPEN_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    const close = new Date(closeAtLocal).getTime();
+                    if (Number.isFinite(close)) {
+                      setResultsOpenLocal(toLocalInputValue(close + p.ms));
+                    }
+                  }}
+                  className={chipClass}
+                >
+                  {p.label}
+                </button>
+              ))}
+              {resultsOpenLocal && (
+                <button
+                  type="button"
+                  onClick={() => setResultsOpenLocal("")}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full border border-tm-gray-250 bg-white px-3.5 py-2 text-[13px] font-bold text-tm-gray-600 transition-colors hover:bg-tm-gray-50"
+                >
+                  <X size={13} />
+                  締切と同時に戻す
+                </button>
+              )}
+            </div>
+            <span className="text-[12.5px] leading-[1.7] text-tm-fg-muted">
+              {resultsOpenIso
+                ? `${formatCloseAt(resultsOpenIso)} に結果を公開します。締め切ってからこの時刻までは、参加URLを知っている人にも結果は見えません。`
+                : "空のままなら締切と同時に結果を公開します。配信やイベントで発表したいときだけ、締切より後の時刻を入れてください（管理ページから前倒しもできます）。"}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 公開設定 */}
@@ -302,7 +373,7 @@ export default function CreatePollForm() {
         </span>
       </div>
       <p className="m-0 text-center text-[12.5px] leading-[1.7] text-tm-fg-muted">
-        作成すると、配布用の参加URLと、あなただけが持つ管理URL（締切に使う）が発行されます。
+        作成すると、配布用の参加URLと、あなただけが持つ管理URL（締切・結果公開に使う）が発行されます。
       </p>
     </div>
   );
