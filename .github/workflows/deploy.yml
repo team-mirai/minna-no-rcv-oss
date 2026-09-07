@@ -1,0 +1,85 @@
+name: Deploy
+
+# main にマージされたときに、本番 DB のマイグレーションを適用する。
+#
+# アプリのデプロイは Vercel の Git 連携が行うが、DB はこれまで手動適用だったため
+# 「アプリだけ新しくなって DB が古い」状態が起き得た。
+# 2026-09-06、results_open_at を追加した PR のマージ後にこれが起きて本番が 500
+# (column poll.results_open_at does not exist) になったため、CD に組み込む。
+#
+# 注意: このジョブと Vercel のビルドは並行して走るので、厳密な順序保証はない。
+# マイグレーションは後方互換 (expand / contract) に保つこと。README 参照。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同時に複数の push が来ても、本番 DB への適用は 1 本ずつ直列に流す。
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: 本番 DB へマイグレーション適用
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: secret の設定を確認
+        run: |
+          if [ -z "${SUPABASE_DB_URL}" ]; then
+            echo "::error::SUPABASE_DB_URL secret が未設定です。本番 Supabase の Session pooler の接続文字列 (ポート 5432) をリポジトリ secret に登録してください。GitHub Actions のランナーは IPv4 のみなので db.<ref>.supabase.co への直結は使えません。"
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: latest
+
+      - name: 適用前の状況 (local / remote)
+        run: supabase migration list --db-url "$SUPABASE_DB_URL"
+
+      - name: 未適用のマイグレーションを適用
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+
+      - name: 適用後の状況
+        if: always()
+        run: supabase migration list --db-url "$SUPABASE_DB_URL" || true
+
+  smoke:
+    name: 本番の疎通確認
+    needs: migrate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: デプロイ後の本番 URL が 200 を返すか確認
+        run: |
+          set -u
+          # Vercel のビルドが終わるまで少し待ってから確認する
+          sleep 60
+          for url in https://rcv.team-mir.ai/ https://rcv.team-mir.ai/demo; do
+            ok=0
+            for i in $(seq 1 10); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo 000)
+              echo "[$i] $url -> $code"
+              if [ "$code" = "200" ]; then
+                ok=1
+                break
+              fi
+              sleep 20
+            done
+            if [ "$ok" != "1" ]; then
+              echo "::error::$url が 200 を返しません。マイグレーションとアプリの整合を確認してください。"
+              exit 1
+            fi
+          done
