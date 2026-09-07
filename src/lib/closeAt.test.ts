@@ -7,6 +7,7 @@ import {
   normalizeCloseAt,
   normalizeResultsOpenAt,
   resolvePresentMode,
+  resolveScheduleEdit,
   MAX_CLOSE_AT_DAYS,
   MIN_CLOSE_AT_MINUTES,
 } from "./closeAt.ts";
@@ -113,4 +114,111 @@ test("主催者のプレゼンモードは公開前でも出せる（受付中�
   assert.equal(resolvePresentMode("open", null, true, NOW), "live");
   // 公開済みなら参加者と同じ確定結果
   assert.equal(resolvePresentMode("closed", null, true, NOW), "final");
+});
+
+// ── 作成後の予約変更（resolveScheduleEdit）────────────────────────────
+
+/** 受付中・締切あり・結果公開の指定なし、という一番ふつうの状態。 */
+const OPEN_POLL = {
+  status: "open" as const,
+  close_at: new Date(NOW + 3 * 60 * MINUTE).toISOString(),
+  results_open_at: null,
+};
+
+test("変更しなかった項目は差分に入れない（DB を無駄に触らない）", () => {
+  assert.deepEqual(resolveScheduleEdit(OPEN_POLL, {}, NOW), {});
+  // 同じ時刻を表記違いで渡しても「変更なし」と見る
+  const sameCloseAt = new Date(OPEN_POLL.close_at).toISOString();
+  assert.deepEqual(
+    resolveScheduleEdit(OPEN_POLL, { closeAt: sameCloseAt, resultsOpenAt: null }, NOW),
+    {}
+  );
+});
+
+test("結果公開だけを変えるとき、締切の下限は再検証しない", () => {
+  // 締切 3 分後（＝下限の 5 分を切っている）でも、結果公開だけなら保存できる。
+  // 「配信が押したので公開を後ろへずらす」を締切間際にやれないと詰むため。
+  const nearClose = { ...OPEN_POLL, close_at: new Date(NOW + 3 * MINUTE).toISOString() };
+  const publishAt = new Date(NOW + 60 * MINUTE).toISOString();
+  assert.deepEqual(resolveScheduleEdit(nearClose, { resultsOpenAt: publishAt }, NOW), {
+    results_open_at: publishAt,
+  });
+});
+
+test("動かした項目には作成時と同じ範囲の検証をかける", () => {
+  assert.throws(() => resolveScheduleEdit(OPEN_POLL, { closeAt: "あした" }, NOW), /形式/);
+  assert.throws(
+    () => resolveScheduleEdit(OPEN_POLL, { closeAt: new Date(NOW + MINUTE).toISOString() }, NOW),
+    new RegExp(`${MIN_CLOSE_AT_MINUTES}分`)
+  );
+  assert.throws(
+    () =>
+      resolveScheduleEdit(
+        OPEN_POLL,
+        { closeAt: new Date(NOW + (MAX_CLOSE_AT_DAYS + 1) * DAY).toISOString() },
+        NOW
+      ),
+    new RegExp(`${MAX_CLOSE_AT_DAYS}日`)
+  );
+  assert.throws(() => resolveScheduleEdit(OPEN_POLL, { closeAt: 1234 }, NOW), /形式/);
+});
+
+test("結果公開が締切より前になる組み合わせは弾く（締切だけ動かした場合も）", () => {
+  const withPublish = {
+    ...OPEN_POLL,
+    results_open_at: new Date(NOW + 30 * MINUTE).toISOString(),
+  };
+  // 締切を結果公開より後ろへ動かした（結果公開は触っていない）
+  assert.throws(
+    () =>
+      resolveScheduleEdit(
+        withPublish,
+        { closeAt: new Date(NOW + 60 * MINUTE).toISOString() },
+        NOW
+      ),
+    /締切以降/
+  );
+});
+
+test("締切を「なし」に戻せる", () => {
+  assert.deepEqual(resolveScheduleEdit(OPEN_POLL, { closeAt: null }, NOW), { close_at: null });
+  assert.deepEqual(resolveScheduleEdit(OPEN_POLL, { closeAt: "" }, NOW), { close_at: null });
+});
+
+test("締切済みの投票では締切の入力を無視する（締切は再開できない）", () => {
+  const closed = {
+    status: "closed" as const,
+    close_at: new Date(NOW - 10 * MINUTE).toISOString(),
+    results_open_at: new Date(NOW + 60 * MINUTE).toISOString(),
+  };
+  const later = new Date(NOW + 120 * MINUTE).toISOString();
+  assert.deepEqual(resolveScheduleEdit(closed, { closeAt: later, resultsOpenAt: later }, NOW), {
+    results_open_at: later,
+  });
+});
+
+test("締切済みで結果公開を空にする指定は弾く（意図しない即公開を防ぐ）", () => {
+  const closed = {
+    status: "closed" as const,
+    close_at: new Date(NOW - 10 * MINUTE).toISOString(),
+    results_open_at: new Date(NOW + 60 * MINUTE).toISOString(),
+  };
+  assert.throws(() => resolveScheduleEdit(closed, { resultsOpenAt: null }, NOW), /いま結果を公開/);
+});
+
+test("渡していないキーは触らない（片方だけの更新で他方を消さない）", () => {
+  const both = {
+    ...OPEN_POLL,
+    results_open_at: new Date(NOW + 4 * 60 * MINUTE).toISOString(),
+  };
+  const later = new Date(NOW + 5 * 60 * MINUTE).toISOString();
+  // 結果公開だけ渡す → 締切は差分に入らない
+  assert.deepEqual(resolveScheduleEdit(both, { resultsOpenAt: later }, NOW), {
+    results_open_at: later,
+  });
+  // 締切だけ渡す → 結果公開は差分に入らない
+  const closeLater = new Date(NOW + 4 * 60 * MINUTE).toISOString();
+  assert.deepEqual(resolveScheduleEdit(both, { closeAt: closeLater }, NOW), {
+    close_at: closeLater,
+  });
 });
