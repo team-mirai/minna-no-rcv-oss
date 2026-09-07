@@ -137,6 +137,54 @@ npm run dev
 `purge_expired_data()`（保存期間の削除）は関数を定義してあるだけで、**スケジュール登録は
 別途必要**です。手順は `supabase/migrations/*_retention.sql` のコメントを参照。
 
+## デプロイとマイグレーション
+
+**main にマージすると、アプリのデプロイ（Vercel）と本番 DB へのマイグレーション適用
+（GitHub Actions）の両方が走ります。** 本番 DB に手で SQL を当てる必要はありません。
+
+| いつ | 何が走るか | どこ |
+| --- | --- | --- |
+| PR を出す | test / typecheck / build ＋ migration ファイルの規約チェック | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+| main にマージ | `supabase db push` で未適用のマイグレーションを本番 DB へ適用 → 本番 URL の疎通確認 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
+| main にマージ | アプリのビルドとデプロイ | Vercel の Git 連携 |
+
+### なぜ自動化したか
+
+2026-09-06、`results_open_at` を追加した PR をマージしたところ、アプリだけが先にデプロイされ
+DB には列が無い状態になり、本番が 500（`column poll.results_open_at does not exist`）に
+なりました。「マージしたら DB も一緒に更新される」を仕組みで保証するためです。
+
+### マイグレーションの書き方（順番の原則）
+
+マイグレーション適用と Vercel のデプロイは**並行して走る**ため、どちらが先に終わるかは
+保証されません。**どちらの順番でも壊れないマイグレーション**だけを書きます
+（expand / contract）。
+
+- **足すのは自由**：列・テーブルの追加は `null 許容` か `default` 付きで足す。古いアプリが
+  動いたままでも壊れない。
+- **消す・厳しくするのは 2 回に分ける**：`drop column` / `not null` 化 / 列名変更は、
+  ①アプリ側の参照を消したリリースを先に出す →②次の PR で DDL を当てる。
+- 破壊的な DDL を機能追加の PR に混ぜない。
+
+### 手で SQL エディタから当てない
+
+手で当てると `supabase_migrations.schema_migrations` の履歴とファイルがずれ、次の
+`db push` が「もう存在する」で落ちます。緊急で手当てしたときは
+`supabase migration repair --status applied <version>` で履歴を揃えてください。
+
+同じ理由で、**すでに main に入っているマイグレーションファイルは書き換えない**
+（修正は新しいファイルを足して行う）。これは CI がチェックします。
+
+### 必要な secret（リポジトリ設定）
+
+| 名前 | 中身 |
+| --- | --- |
+| `SUPABASE_DB_URL` | 本番 Supabase の **Session pooler** の接続文字列（`postgresql://postgres.<ref>:<password>@aws-<n>-<region>.pooler.supabase.com:5432/postgres`） |
+
+GitHub Actions のランナーは IPv4 のみなので、`db.<ref>.supabase.co` への直結ではなく
+pooler（ポート 5432 のセッションモード）を使います。Supabase Dashboard の Connect から
+取得できます。
+
 ## SNS シェア（OGP）
 
 チャットや SNS に URL を貼ったときのカードは、`next/og` で毎回サーバ描画している
