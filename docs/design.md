@@ -22,10 +22,12 @@
 - `/new`：作成フォーム
 - `/p/<slug>`：参加（順位付け）
 - `/p/<slug>/results`：結果（開票の経過つき。受付中は show_live_count 次第で途中経過）
-- `/p/<slug>/manage?key=…`：管理（共有URL・締切）
+- `/p/<slug>/present`：開票プレゼン（16:9投影。参加者は結果公開後のみ。`?key=…` を付ければ
+  主催者は公開前でも開ける＝締切済みなら確定結果・受付中なら暫定）
+- `/p/<slug>/manage?key=…`：管理（共有URL・締切・結果公開）
 
 ## 5. データモデル
-`poll(slug, status open|closed, close_at, require_captcha, show_live_count, admin_key_hash)` /
+`poll(slug, status open|closed, close_at, results_open_at, require_captcha, show_live_count, admin_key_hash)` /
 `poll_option(poll_id, label, color, sort_order)` /
 `ballot(pk=(poll_id, voter_key), rankings uuid[])` /
 `poll_result(poll_id, result jsonb, ballot_count)` /

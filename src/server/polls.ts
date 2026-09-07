@@ -2,7 +2,7 @@ import "server-only";
 import { admin } from "@/lib/supabase";
 import { generateSlug } from "@/lib/slug";
 import { generateAdminKey, hashAdminKey } from "@/lib/adminKey";
-import { normalizeCloseAt } from "@/lib/closeAt";
+import { normalizeCloseAt, normalizeResultsOpenAt } from "@/lib/closeAt";
 import { tallyRcv, type RcvTallyResult } from "@/features/rcv/tally";
 
 // ── 型 ──────────────────────────────────────────────────────────────────────
@@ -16,6 +16,8 @@ export type PublicPoll = {
   description: string | null;
   status: PollStatus;
   close_at: string | null;
+  /** 結果を公開する時刻。null なら締切と同時に公開する（lib/closeAt.ts の isResultsOpen）。 */
+  results_open_at: string | null;
   require_captcha: boolean;
   show_live_count: boolean;
   created_at: string;
@@ -43,7 +45,7 @@ export type SubmitResult =
   | "rate_limited";
 
 const PUBLIC_COLS =
-  "id, slug, title, description, status, close_at, require_captcha, show_live_count, created_at";
+  "id, slug, title, description, status, close_at, results_open_at, require_captcha, show_live_count, created_at";
 
 // 会場スクリーン/バー用のパレット（選択肢に順に割り当てる）。
 const PALETTE = [
@@ -60,6 +62,8 @@ export type CreatePollInput = {
   requireCaptcha?: boolean;
   showLiveCount?: boolean;
   closeAt?: string | null;
+  /** 結果公開（ISO 8601）。未指定・null なら締切と同時に公開する。 */
+  resultsOpenAt?: string | null;
   /** 作成者 IP の HMAC ハッシュ（レート制限用・平文 IP は保存しない） */
   createdIpHash?: string | null;
 };
@@ -101,6 +105,8 @@ export async function createPoll(
   }
   // 締切（任意）。空なら null＝締切なし。過去・遠すぎる指定はここで弾く。
   const closeAt = normalizeCloseAt(input.closeAt);
+  // 結果公開（任意）。空なら null＝締切と同時に公開。締切より前は弾く。
+  const resultsOpenAt = normalizeResultsOpenAt(input.resultsOpenAt, closeAt);
 
   const adminKey = generateAdminKey();
   const admin_key_hash = hashAdminKey(adminKey);
@@ -117,6 +123,7 @@ export async function createPoll(
         require_captcha: input.requireCaptcha ?? false,
         show_live_count: input.showLiveCount ?? true,
         close_at: closeAt,
+        results_open_at: resultsOpenAt,
         admin_key_hash,
         created_ip_hash: input.createdIpHash ?? null,
       })
@@ -256,6 +263,20 @@ export async function ensureClosedIfDue(poll: PublicPoll): Promise<PollStatus> {
     return "closed";
   }
   return "open";
+}
+
+/**
+ * 結果公開を「いま」に前倒しする（管理ページの「いま結果を公開する」）。
+ *
+ * 予約した公開時刻より早く発表したくなる場面（配信の進行が前後した等）のための操作。
+ * 締切そのものは動かさない（受付の締切と結果公開は別）。
+ */
+export async function publishResultsNow(pollId: string): Promise<void> {
+  const { error } = await admin()
+    .from("poll")
+    .update({ results_open_at: new Date().toISOString() })
+    .eq("id", pollId);
+  if (error) throw error;
 }
 
 // ── 集計 ────────────────────────────────────────────────────────────────────
