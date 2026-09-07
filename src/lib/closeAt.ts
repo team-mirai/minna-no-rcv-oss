@@ -95,6 +95,37 @@ export function isResultsOpen(
 }
 
 /**
+ * プレゼンモードで何を映すか。
+ *
+ * - final   … 締切後の確定結果（公開済み、または主催者の公開前プレビュー）
+ * - live    … 受付中の途中経過（主催者のプレビューのみ・暫定値）
+ * - standby … 待機画面（結果を出さない）
+ */
+export type PresentMode = "final" | "live" | "standby";
+
+/**
+ * プレゼンモードの表示内容を決める。
+ *
+ * 主催者（管理キーを持っている人）は、結果公開の前でもプレゼンモードを開ける。
+ * 「18時に締め切って、20時の配信でこちらから発表する」をやるには、発表の瞬間まで
+ * 参加者には結果を見せず、かつ主催者は手元で開票を映せる必要があるため
+ * （結果を公開してから映す運用だと、配信で読み上げる前に参加者のスマホに結果が出る）。
+ *
+ * 参加者（isAdmin=false）の見え方はこれまでどおりで、公開時刻までは standby。
+ */
+export function resolvePresentMode(
+  status: "open" | "closed",
+  resultsOpenAt: string | null,
+  isAdmin: boolean,
+  now: number = Date.now()
+): PresentMode {
+  if (isResultsOpen(status, resultsOpenAt, now)) return "final";
+  if (!isAdmin) return "standby";
+  // 締切済みなら確定結果、まだ受付中なら暫定の途中経過（画面にその旨のバッジを出す）。
+  return status === "closed" ? "final" : "live";
+}
+
+/**
  * 締切の表示（例: 8月22日(土) 18:00）。結果公開の時刻も同じ書式で出す。
  *
  * タイムゾーンは日本時間で固定する。閲覧者のタイムゾーンに合わせると、サーバ描画と

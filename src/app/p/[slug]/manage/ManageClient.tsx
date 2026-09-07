@@ -202,7 +202,7 @@ export default function ManageClient({
             <Megaphone size={14} className="flex-none text-tm-teal-hover" />
             {resultsOpen
               ? `結果公開 ${formatCloseAt(resultsOpenAt)}（公開中）`
-              : `${formatCloseAt(resultsOpenAt)} に結果を公開します（それまでは誰にも見えません）`}
+              : `${formatCloseAt(resultsOpenAt)} に結果を公開します（それまでは参加者には見えません）`}
           </div>
         )}
       </div>
@@ -254,17 +254,25 @@ export default function ManageClient({
             <ChartBar size={16} />
             結果を見る
           </a>
-          {resultsOpen && (
-            <a
-              href={`/p/${slug}/present`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-4 py-2.5 text-[13.5px] font-bold text-tm-teal-deep transition-colors hover:border-tm-teal hover:bg-tm-teal hover:text-white"
-            >
-              <MonitorPlay size={16} />
-              プレゼンモードで発表
-            </a>
-          )}
+          {/* プレゼンモードはいつでも開ける。公開前は管理キー付きのURLで開き、
+              主催者だけに見える（参加者はこれまでどおり待機画面）。 */}
+          <a
+            href={
+              resultsOpen
+                ? `/p/${slug}/present`
+                : `/p/${slug}/present?key=${encodeURIComponent(adminKey)}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-4 py-2.5 text-[13.5px] font-bold text-tm-teal-deep transition-colors hover:border-tm-teal hover:bg-tm-teal hover:text-white"
+          >
+            <MonitorPlay size={16} />
+            {resultsOpen
+              ? "プレゼンモードで発表"
+              : status === "closed"
+                ? "プレゼンモードで発表（あなただけに見えます）"
+                : "プレゼンモードで途中経過を見る（暫定）"}
+          </a>
           {status === "closed" && !resultsOpen && (
             <button
               type="button"
@@ -292,7 +300,7 @@ export default function ManageClient({
           <span className="text-[12.5px] leading-[1.75] text-tm-fg-muted">
             締め切ると受付中の票が確定します。
             {resultsOpenAt
-              ? `結果ページ・プレゼンモードが見られるようになるのは ${formatCloseAt(resultsOpenAt)} からで、締め切ってもそれまでは誰にも見えません。`
+              ? `参加者が結果ページ・プレゼンモードを見られるようになるのは ${formatCloseAt(resultsOpenAt)} からで、締め切ってもそれまでは参加者には見えません（このページのリンクから開くプレゼンモードは、公開前でもあなただけに見えます）。`
               : "そのまま結果ページが開票の経過つきで表示されます。"}
             締切と同時刻の票が入り込まないよう、締切はDBの行ロックで受理と直列化されます。
           </span>
@@ -300,8 +308,9 @@ export default function ManageClient({
         {status === "closed" && !resultsOpen && (
           <span className="text-[12.5px] leading-[1.75] text-tm-fg-muted">
             投票は締め切り済みで、結果は公開待ちです。参加URLを知っている人が結果ページを開いても、
-            公開時刻までは結果が出ません（あなたも同じ画面が出ます）。配信などに合わせて前倒しするなら
-            「いま結果を公開する」を押してください。
+            公開時刻までは結果が出ません。あなたはこのページの「プレゼンモードで発表」から、公開前でも
+            確定結果を映せます（このリンクにだけ管理キーが付いています。画面共有するときはURL欄を映さないでください）。
+            参加者にも見せてよくなったら「いま結果を公開する」を押してください。
           </span>
         )}
       </div>
@@ -316,7 +325,7 @@ export default function ManageClient({
           <span className="text-[13.5px] leading-[1.75] text-tm-fg-muted">
             締め切ると再開できません。現在 {ballotCount.toLocaleString()}人の票で結果が確定し、
             {resultsOpenAt
-              ? `結果発表ページ・プレゼンモードは ${formatCloseAt(resultsOpenAt)} から見られるようになります。`
+              ? `参加者が結果発表ページ・プレゼンモードを見られるのは ${formatCloseAt(resultsOpenAt)} からです（あなたは締め切った直後からプレゼンモードで確定結果を映せます）。`
               : "結果発表ページ・プレゼンモードが有効になります。"}
           </span>
           <div className="flex w-full flex-col gap-2 pt-1">
