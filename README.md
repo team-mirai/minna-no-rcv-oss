@@ -28,8 +28,8 @@
 - **結果ページ**（`/p/<slug>/results`）… 1位を強調した勝者ヒーロー（紙吹雪＋決定スタンプ）＋
   手動操作・進行バーつきの「開票のドラマ」リプレイ＋比較カード＋共有（URL コピー / X）。
   受付中（`show_live_count`）は“1位票のいま”を15秒ごとに自動更新。
-- **管理ページ** … 参加URLのコピー＆QR表示（会場投影用）・投票数の自動更新・予約した締切の
-  表示・締切の確認モーダル。
+- **管理ページ** … 参加URLのコピー＆QR表示（会場投影用）・投票数の自動更新・予約した締切と
+  結果公開時刻の表示・締切の確認モーダル・「いま結果を公開する」。
 
 ## アーキテクチャ
 
@@ -47,9 +47,9 @@ src/
   features/rcv/presenter/       開票プレゼン（16:9投影・RcvResultsPresenter / config / rowOrder / demo）
   features/rcv/replay/          モバイル結果ページ用の開票リプレイ
   components/                   Brand / Modal / BallotDoneArt / RcvExplainer
-  lib/                          supabase / voter Cookie / 管理キー / slug / 締切(closeAt) / env / haptics
+  lib/                          supabase / voter Cookie / 管理キー / slug / 締切・結果公開(closeAt) / env / haptics
   features/og/card.tsx          SNS シェア用 OG 画像（1200×630）の共通レイアウト
-  server/polls.ts               BFF（作成・取得・受理・締切・集計）
+  server/polls.ts               BFF（作成・取得・受理・締切・結果公開・集計）
   server/rateLimit.ts           DB ベースの固定窓レート制限（作成・投票）
   app/                          画面（トップ / 作成 / 参加 / 結果 / プレゼン / 管理 / デモ）＋ Server Actions
   app/**/opengraph-image.tsx    ページごとの OG 画像
@@ -59,6 +59,7 @@ supabase/migrations/
   ..._functions.sql             submit_ballot / close_poll（原子的 RPC）
   ..._rate_limit.sql            レート制限用の列・インデックス
   ..._retention.sql             purge_expired_data（保存期間の削除関数）
+  ..._results_open_at.sql       結果公開時刻（締切と分離）
 ```
 
 ## 投票受理の atomic 性
@@ -82,7 +83,7 @@ supabase/migrations/
 この直列化はローカル Postgres 16 で実証済みです（close が in-flight submit を待ち、close 後の
 submit が `poll_closed` になる）。
 
-## 締切（close_at）
+## 締切（close_at）と結果公開（results_open_at）
 
 作成フォームで締切（任意）を指定できます。指定した時刻を過ぎると、
 
@@ -92,8 +93,36 @@ submit が `poll_closed` になる）。
   票が入らないこと自体は上の 1 で保証されている）。
 
 締切は指定しなくても構いません（管理URLの「投票を締め切る」を押すまで受け付け続ける）。
+
+**締切と結果公開は別の時刻**です。締切＝受付をやめる時刻、結果公開＝結果を見せる時刻で、
+「18時に締め切って、20時の配信で発表する」ように分けられます。
+
+- `results_open_at` が **null なら締切と同時に公開**（既定・これまでの挙動）。
+- 指定した場合、締切済みでもその時刻まで **参加者には結果ページ・プレゼンモードで結果を
+  出しません**。待機画面では集計そのものを呼ばないので、描画しないだけで props に載る
+  （＝ DevTools から読める）事故も起きません。
+- 発表を前倒ししたいときは、管理ページの「いま結果を公開する」で `results_open_at` を
+  現在時刻に更新します（締切は動かしません）。
+- 受付中の途中経過（`show_live_count`）はこれとは独立で、これまでどおりの挙動です。
+
+### 主催者はいつでもプレゼンモードを開ける
+
+配信・会場でこちらから発表するには、参加者に見せないまま主催者だけが開票画面を映せる必要が
+あります（結果を公開してから映す運用だと、読み上げる前に参加者のスマホに結果が出てしまう）。
+そのため **プレゼンモード（`/p/<slug>/present`）は管理キー付きURLならいつでも開けます**。
+
+- `?key=<管理キー>` を付けて開いたときだけ主催者とみなす（管理ページの検証と同じ
+  `verifyAdminKey`。ハッシュ照合で、キーそのものはDBに無い）。キーが無い／合わないアクセスは
+  これまでどおり待機画面。
+- 締切済み・公開待ちなら **確定結果**（`poll_result` のスナップショットと同じ・後から変わらない）、
+  まだ受付中なら **途中経過（暫定）**。どちらも画面右上にその旨のバッジを出す。
+- 何を映すかの判定は `src/lib/closeAt.ts` の `resolvePresentMode(status, resultsOpenAt, isAdmin)`
+  に集約（`final` / `live` / `standby`・テスト付き）。
+- 管理キーがURLに載るので、画面共有するときは全画面表示にしてURL欄を映さないこと。
+
 入力の検証と表示フォーマットは `src/lib/closeAt.ts`（純粋関数・テスト付き）にまとめてあり、
-表示は主催者と参加者で食い違わないよう **日本時間で固定** しています。
+表示は主催者と参加者で食い違わないよう **日本時間で固定** しています。結果を公開してよいかの
+判定も同じファイルの `isResultsOpen`（締切済み かつ 公開時刻を過ぎている）に集約しています。
 
 ## セットアップ
 

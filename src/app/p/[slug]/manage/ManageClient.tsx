@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
-import { closePollAction } from "@/app/actions";
+import { closePollAction, publishResultsAction } from "@/app/actions";
 import type { PollStatus } from "@/server/polls";
 import { formatCloseAt } from "@/lib/closeAt";
 import { Modal } from "@/components/Modal";
@@ -16,6 +16,7 @@ import {
   HandTap,
   Link as LinkIcon,
   LockKey,
+  Megaphone,
   MonitorPlay,
   QrCode,
   StopCircle,
@@ -79,6 +80,8 @@ export default function ManageClient({
   title,
   status,
   closeAt,
+  resultsOpenAt,
+  resultsOpen,
   ballotCount,
   shareUrl,
   adminUrl,
@@ -91,6 +94,10 @@ export default function ManageClient({
   status: PollStatus;
   /** 予約された締切（ISO 8601）。null なら締切なし＝手動で締め切るまで受け付ける。 */
   closeAt: string | null;
+  /** 予約された結果公開（ISO 8601）。null なら締切と同時に公開。 */
+  resultsOpenAt: string | null;
+  /** いま結果を見せてよいか（締切済み かつ 結果公開の時刻を過ぎている）。 */
+  resultsOpen: boolean;
   ballotCount: number;
   shareUrl: string;
   adminUrl: string;
@@ -100,6 +107,7 @@ export default function ManageClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
 
@@ -111,17 +119,25 @@ export default function ManageClient({
   }, [shareUrl]);
 
   // 受付中は投票数を 15 秒ごとに自動更新する（締切時刻を過ぎた締切済みへの切り替わりも
-  // この更新で届く）。
+  // この更新で届く）。締切済みでも結果公開を待っている間は、公開時刻での切り替わりを
+  // 拾うために更新を続ける。
   useEffect(() => {
-    if (status !== "open") return;
+    if (status !== "open" && resultsOpen) return;
     const t = setInterval(() => router.refresh(), 15_000);
     return () => clearInterval(t);
-  }, [status, router]);
+  }, [status, resultsOpen, router]);
 
   function close() {
     setConfirmOpen(false);
     startTransition(async () => {
       await closePollAction(slug, adminKey);
+    });
+  }
+
+  function publish() {
+    setPublishOpen(false);
+    startTransition(async () => {
+      await publishResultsAction(slug, adminKey);
     });
   }
 
@@ -181,6 +197,14 @@ export default function ManageClient({
               : `締切 ${formatCloseAt(closeAt)}`}
           </div>
         )}
+        {resultsOpenAt && (
+          <div className="flex items-center gap-1.5 text-[12.5px] leading-[1.7] text-tm-fg-muted">
+            <Megaphone size={14} className="flex-none text-tm-teal-hover" />
+            {resultsOpen
+              ? `結果公開 ${formatCloseAt(resultsOpenAt)}（公開中）`
+              : `${formatCloseAt(resultsOpenAt)} に結果を公開します（それまでは参加者には見えません）`}
+          </div>
+        )}
       </div>
 
       {/* ── URL ──── */}
@@ -230,16 +254,35 @@ export default function ManageClient({
             <ChartBar size={16} />
             結果を見る
           </a>
-          {status === "closed" && (
-            <a
-              href={`/p/${slug}/present`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-4 py-2.5 text-[13.5px] font-bold text-tm-teal-deep transition-colors hover:border-tm-teal hover:bg-tm-teal hover:text-white"
+          {/* プレゼンモードはいつでも開ける。公開前は管理キー付きのURLで開き、
+              主催者だけに見える（参加者はこれまでどおり待機画面）。 */}
+          <a
+            href={
+              resultsOpen
+                ? `/p/${slug}/present`
+                : `/p/${slug}/present?key=${encodeURIComponent(adminKey)}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-4 py-2.5 text-[13.5px] font-bold text-tm-teal-deep transition-colors hover:border-tm-teal hover:bg-tm-teal hover:text-white"
+          >
+            <MonitorPlay size={16} />
+            {resultsOpen
+              ? "プレゼンモードで発表"
+              : status === "closed"
+                ? "プレゼンモードで発表（あなただけに見えます）"
+                : "プレゼンモードで途中経過を見る（暫定）"}
+          </a>
+          {status === "closed" && !resultsOpen && (
+            <button
+              type="button"
+              onClick={() => setPublishOpen(true)}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-full bg-tm-teal px-4 py-2.5 text-[13.5px] font-bold text-white transition-colors hover:bg-tm-teal-hover disabled:opacity-50"
             >
-              <MonitorPlay size={16} />
-              プレゼンモードで発表
-            </a>
+              <Megaphone size={16} weight="fill" />
+              {pending ? "公開中…" : "いま結果を公開する"}
+            </button>
           )}
           {status === "open" && (
             <button
@@ -255,8 +298,19 @@ export default function ManageClient({
         </div>
         {status === "open" && (
           <span className="text-[12.5px] leading-[1.75] text-tm-fg-muted">
-            締め切ると受付中の票が確定し、結果ページが開票の経過つきで表示されます。
+            締め切ると受付中の票が確定します。
+            {resultsOpenAt
+              ? `参加者が結果ページ・プレゼンモードを見られるようになるのは ${formatCloseAt(resultsOpenAt)} からで、締め切ってもそれまでは参加者には見えません（このページのリンクから開くプレゼンモードは、公開前でもあなただけに見えます）。`
+              : "そのまま結果ページが開票の経過つきで表示されます。"}
             締切と同時刻の票が入り込まないよう、締切はDBの行ロックで受理と直列化されます。
+          </span>
+        )}
+        {status === "closed" && !resultsOpen && (
+          <span className="text-[12.5px] leading-[1.75] text-tm-fg-muted">
+            投票は締め切り済みで、結果は公開待ちです。参加URLを知っている人が結果ページを開いても、
+            公開時刻までは結果が出ません。あなたはこのページの「プレゼンモードで発表」から、公開前でも
+            確定結果を映せます（このリンクにだけ管理キーが付いています。画面共有するときはURL欄を映さないでください）。
+            参加者にも見せてよくなったら「いま結果を公開する」を押してください。
           </span>
         )}
       </div>
@@ -270,7 +324,9 @@ export default function ManageClient({
           <b className="text-[17px]">投票を締め切りますか？</b>
           <span className="text-[13.5px] leading-[1.75] text-tm-fg-muted">
             締め切ると再開できません。現在 {ballotCount.toLocaleString()}人の票で結果が確定し、
-            結果発表ページ・プレゼンモードが有効になります。
+            {resultsOpenAt
+              ? `参加者が結果発表ページ・プレゼンモードを見られるのは ${formatCloseAt(resultsOpenAt)} からです（あなたは締め切った直後からプレゼンモードで確定結果を映せます）。`
+              : "結果発表ページ・プレゼンモードが有効になります。"}
           </span>
           <div className="flex w-full flex-col gap-2 pt-1">
             <button
@@ -283,6 +339,43 @@ export default function ManageClient({
             <button
               type="button"
               onClick={() => setConfirmOpen(false)}
+              className="rounded-full border border-tm-gray-250 bg-white py-3 text-[14px] font-bold text-tm-gray-600 transition-colors hover:bg-tm-gray-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── 結果公開の確認モーダル ──── */}
+      <Modal
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        ariaLabel="結果公開の確認"
+        variant="center"
+      >
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-tm-teal-100">
+            <Megaphone size={26} weight="fill" className="text-tm-teal-deep" />
+          </span>
+          <b className="text-[17px]">いま結果を公開しますか？</b>
+          <span className="text-[13.5px] leading-[1.75] text-tm-fg-muted">
+            {resultsOpenAt
+              ? `予約している ${formatCloseAt(resultsOpenAt)} を待たずに公開します。`
+              : "結果ページとプレゼンモードを公開します。"}
+            公開すると、参加URLを知っている人が結果を見られる状態になります（非公開には戻せません）。
+          </span>
+          <div className="flex w-full flex-col gap-2 pt-1">
+            <button
+              type="button"
+              onClick={publish}
+              className="rounded-full bg-tm-teal py-3 text-[15px] font-bold text-white transition-colors hover:bg-tm-teal-hover"
+            >
+              いま公開する
+            </button>
+            <button
+              type="button"
+              onClick={() => setPublishOpen(false)}
               className="rounded-full border border-tm-gray-250 bg-white py-3 text-[14px] font-bold text-tm-gray-600 transition-colors hover:bg-tm-gray-50"
             >
               キャンセル

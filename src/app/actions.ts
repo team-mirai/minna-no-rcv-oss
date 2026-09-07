@@ -11,6 +11,8 @@ import {
   getPollRowForAdmin,
   submitBallot,
   closePoll,
+  ensureClosedIfDue,
+  publishResultsNow,
   getFinalResult,
   logSubmit,
   LIMITS,
@@ -26,6 +28,8 @@ export type CreateActionInput = {
   showLiveCount: boolean;
   /** 締切（ISO 8601）。未指定・null なら締切なし（管理URLから手動で締め切る）。 */
   closeAt?: string | null;
+  /** 結果公開（ISO 8601）。未指定・null なら締切と同時に公開する。 */
+  resultsOpenAt?: string | null;
 };
 
 /**
@@ -53,6 +57,7 @@ export async function createPollAction(
       options: input?.options,
       showLiveCount: input?.showLiveCount !== false,
       closeAt: input?.closeAt ?? null,
+      resultsOpenAt: input?.resultsOpenAt ?? null,
       createdIpHash: ipHash,
     }));
   } catch (e) {
@@ -132,6 +137,28 @@ export async function closePollAction(slug: string, key: string): Promise<void> 
   }
   await closePoll(row.id);
   // 締切後の不変データからスナップショットを確定させておく（冪等）。
+  const pub = await getPollBySlug(slug);
+  if (pub) await getFinalResult(pub.poll);
+  redirect(`/p/${slug}/results`);
+}
+
+/**
+ * 結果公開を「いま」に前倒しする（管理者）。締切そのものは動かさない。
+ *
+ * 予約した公開時刻を待たずに発表したくなったとき用。まだ受付中の poll では何もしない
+ * （受付中の票が結果に入ってしまうため。先に締め切ってから公開する）。
+ */
+export async function publishResultsAction(slug: string, key: string): Promise<void> {
+  const row = await getPollRowForAdmin(slug);
+  if (!row) redirect(`/p/${slug}`);
+  if (!verifyAdminKey(key, row.admin_key_hash)) {
+    redirect(`/p/${slug}/manage?key=${encodeURIComponent(key)}&err=auth`);
+  }
+  const status = await ensureClosedIfDue(row);
+  if (status !== "closed") {
+    redirect(`/p/${slug}/manage?key=${encodeURIComponent(key)}`);
+  }
+  await publishResultsNow(row.id);
   const pub = await getPollBySlug(slug);
   if (pub) await getFinalResult(pub.poll);
   redirect(`/p/${slug}/results`);

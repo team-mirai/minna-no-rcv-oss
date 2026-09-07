@@ -9,6 +9,7 @@ import {
   Clock,
   HandTap,
   ListNumbers,
+  Megaphone,
   Users,
 } from "@phosphor-icons/react/dist/ssr";
 
@@ -75,6 +76,12 @@ export default async function VotePage({
             <span className="inline-flex items-center gap-[5px] text-[13.5px] text-tm-fg-muted">
               <Clock size={14} className="text-tm-teal-hover" />
               {formatCloseAt(poll.close_at)} まで
+            </span>
+          )}
+          {poll.results_open_at && (
+            <span className="inline-flex items-center gap-[5px] text-[13.5px] text-tm-fg-muted">
+              <Megaphone size={14} className="text-tm-teal-hover" />
+              結果発表 {formatCloseAt(poll.results_open_at)}
             </span>
           )}
         </div>

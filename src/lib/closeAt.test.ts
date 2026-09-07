@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 // .ts 拡張子明示は node --test（型ストリップ実行）が拡張子を補完しないため必要。
 import {
   formatCloseAt,
+  isResultsOpen,
   normalizeCloseAt,
+  normalizeResultsOpenAt,
+  resolvePresentMode,
   MAX_CLOSE_AT_DAYS,
   MIN_CLOSE_AT_MINUTES,
 } from "./closeAt.ts";
@@ -49,4 +52,65 @@ test("表示は日本時間で固定する（実行環境のタイムゾーン�
   assert.ok(s.includes("8月22日"), s);
   assert.ok(s.includes("18:00"), s);
   assert.equal(formatCloseAt("not-a-date"), "");
+});
+
+test("結果公開の空入力は「締切と同時に公開」として通す", () => {
+  const closeAt = new Date(NOW + DAY).toISOString();
+  assert.equal(normalizeResultsOpenAt(null, closeAt, NOW), null);
+  assert.equal(normalizeResultsOpenAt(undefined, closeAt, NOW), null);
+  assert.equal(normalizeResultsOpenAt("", closeAt, NOW), null);
+});
+
+test("結果公開は締切より前にできない（締切と同時は通す）", () => {
+  const closeAt = new Date(NOW + DAY).toISOString();
+  const before = new Date(NOW + DAY - MINUTE).toISOString();
+  assert.throws(() => normalizeResultsOpenAt(before, closeAt, NOW), /締切以降/);
+  assert.equal(normalizeResultsOpenAt(closeAt, closeAt, NOW), closeAt);
+  const after = new Date(NOW + DAY + 2 * 60 * MINUTE).toISOString();
+  assert.equal(normalizeResultsOpenAt(after, closeAt, NOW), after);
+});
+
+test("結果公開も直近すぎる・遠すぎる指定は弾く", () => {
+  const tooSoon = new Date(NOW + (MIN_CLOSE_AT_MINUTES - 1) * MINUTE).toISOString();
+  assert.throws(() => normalizeResultsOpenAt(tooSoon, null, NOW), /結果公開/);
+  const tooFar = new Date(NOW + (MAX_CLOSE_AT_DAYS + 1) * DAY).toISOString();
+  assert.throws(() => normalizeResultsOpenAt(tooFar, null, NOW), /結果公開/);
+  assert.throws(() => normalizeResultsOpenAt("あした", null, NOW), /形式/);
+});
+
+test("結果は「締切済み かつ 公開時刻を過ぎている」ときだけ見せる", () => {
+  const soon = new Date(NOW + 2 * 60 * MINUTE).toISOString();
+  const past = new Date(NOW - MINUTE).toISOString();
+  // 受付中は、公開時刻の指定があってもなくても見せない
+  assert.equal(isResultsOpen("open", null, NOW), false);
+  assert.equal(isResultsOpen("open", past, NOW), false);
+  // 締切済み＋指定なし＝これまでどおり締切と同時に公開
+  assert.equal(isResultsOpen("closed", null, NOW), true);
+  // 締切済みでも、公開時刻の前は見せない
+  assert.equal(isResultsOpen("closed", soon, NOW), false);
+  assert.equal(isResultsOpen("closed", past, NOW), true);
+  // 読めない値は隠す側に倒す
+  assert.equal(isResultsOpen("closed", "not-a-date", NOW), false);
+});
+
+test("参加者のプレゼンモードは公開時刻まで待機のまま", () => {
+  const soon = new Date(NOW + 2 * 60 * MINUTE).toISOString();
+  const past = new Date(NOW - MINUTE).toISOString();
+  assert.equal(resolvePresentMode("open", null, false, NOW), "standby");
+  assert.equal(resolvePresentMode("open", soon, false, NOW), "standby");
+  assert.equal(resolvePresentMode("closed", soon, false, NOW), "standby");
+  // 公開済みなら確定結果（これまでどおり）
+  assert.equal(resolvePresentMode("closed", null, false, NOW), "final");
+  assert.equal(resolvePresentMode("closed", past, false, NOW), "final");
+});
+
+test("主催者のプレゼンモードは公開前でも出せる（受付中は暫定）", () => {
+  const soon = new Date(NOW + 2 * 60 * MINUTE).toISOString();
+  // 締切済み・公開待ち＝確定結果を主催者だけ先に映せる
+  assert.equal(resolvePresentMode("closed", soon, true, NOW), "final");
+  // 受付中＝途中経過（暫定）。確定結果はまだ存在しない
+  assert.equal(resolvePresentMode("open", soon, true, NOW), "live");
+  assert.equal(resolvePresentMode("open", null, true, NOW), "live");
+  // 公開済みなら参加者と同じ確定結果
+  assert.equal(resolvePresentMode("closed", null, true, NOW), "final");
 });

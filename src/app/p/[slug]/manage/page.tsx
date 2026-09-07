@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { getPollRowForAdmin, getBallotCount, ensureClosedIfDue } from "@/server/polls";
 import { verifyAdminKey } from "@/lib/adminKey";
+import { isResultsOpen } from "@/lib/closeAt";
 import ManageClient from "./ManageClient";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,8 @@ export default async function ManagePage({
       title={row.title}
       status={status}
       closeAt={row.close_at}
+      resultsOpenAt={row.results_open_at}
+      resultsOpen={isResultsOpen(status, row.results_open_at)}
       ballotCount={ballotCount}
       shareUrl={shareUrl}
       adminUrl={adminUrl}
