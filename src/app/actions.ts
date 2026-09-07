@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { clientInfo } from "@/lib/requestInfo";
 import { readVoterKey, issueVoterKey } from "@/lib/voter";
 import { verifyAdminKey } from "@/lib/adminKey";
+import { isResultsOpen } from "@/lib/closeAt";
 import { allowCreate, allowSubmit } from "@/server/rateLimit";
 import {
   createPoll,
@@ -13,6 +14,7 @@ import {
   closePoll,
   ensureClosedIfDue,
   publishResultsNow,
+  updateSchedule,
   getFinalResult,
   logSubmit,
   LIMITS,
@@ -162,4 +164,43 @@ export async function publishResultsAction(slug: string, key: string): Promise<v
   const pub = await getPollBySlug(slug);
   if (pub) await getFinalResult(pub.poll);
   redirect(`/p/${slug}/results`);
+}
+
+export type UpdateScheduleInput = {
+  /** 締切（ISO 8601）。null で締切なし。受付中の投票でだけ変更できる。 */
+  closeAt?: string | null;
+  /** 結果公開（ISO 8601）。null で「締切と同時に公開」。 */
+  resultsOpenAt?: string | null;
+};
+
+/**
+ * 締切・結果公開の予約を変更する（管理者）。
+ *
+ * 作成時にしか決められないと、配信の時間がずれただけで DB を直接触るしかなくなるので、
+ * 管理ページから直せるようにしてある。結果を公開したあとは変更できない（一度見えた結果を
+ * 隠し直せるように見える UI にしないため。取り消せない操作を可逆に見せない）。
+ *
+ * 検証エラーはフォームに出すため、redirect ではなく戻り値で返す（createPollAction と同じ形）。
+ */
+export async function updateScheduleAction(
+  slug: string,
+  key: string,
+  input: UpdateScheduleInput
+): Promise<{ error: string } | undefined> {
+  const row = await getPollRowForAdmin(slug);
+  if (!row) redirect(`/p/${slug}`);
+  if (!verifyAdminKey(key, row.admin_key_hash)) {
+    redirect(`/p/${slug}/manage?key=${encodeURIComponent(key)}&err=auth`);
+  }
+  const status = await ensureClosedIfDue(row);
+  if (isResultsOpen(status, row.results_open_at)) {
+    return { error: "結果を公開したあとは予約を変更できません" };
+  }
+
+  try {
+    await updateSchedule({ ...row, status }, input);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "予約の変更に失敗しました" };
+  }
+  return undefined;
 }

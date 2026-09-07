@@ -2,7 +2,11 @@ import "server-only";
 import { admin } from "@/lib/supabase";
 import { generateSlug } from "@/lib/slug";
 import { generateAdminKey, hashAdminKey } from "@/lib/adminKey";
-import { normalizeCloseAt, normalizeResultsOpenAt } from "@/lib/closeAt";
+import {
+  normalizeCloseAt,
+  normalizeResultsOpenAt,
+  resolveScheduleEdit,
+} from "@/lib/closeAt";
 import { tallyRcv, type RcvTallyResult } from "@/features/rcv/tally";
 
 // ── 型 ──────────────────────────────────────────────────────────────────────
@@ -276,6 +280,28 @@ export async function publishResultsNow(pollId: string): Promise<void> {
     .from("poll")
     .update({ results_open_at: new Date().toISOString() })
     .eq("id", pollId);
+  if (error) throw error;
+}
+
+/**
+ * 締切・結果公開の予約を作成後に変更する（管理ページの「予約時刻を変更する」）。
+ *
+ * 検証は resolveScheduleEdit（純粋関数）に寄せてあり、ここは差分の書き戻しだけを行う。
+ * 変更が無ければ DB を触らない。
+ */
+export async function updateSchedule(
+  poll: {
+    id: string;
+    status: PollStatus;
+    close_at: string | null;
+    results_open_at: string | null;
+  },
+  input: { closeAt?: unknown; resultsOpenAt?: unknown }
+): Promise<void> {
+  const patch = resolveScheduleEdit(poll, input);
+  if (Object.keys(patch).length === 0) return;
+
+  const { error } = await admin().from("poll").update(patch).eq("id", poll.id);
   if (error) throw error;
 }
 

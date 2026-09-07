@@ -24,7 +24,8 @@
 - `/p/<slug>/results`：結果（開票の経過つき。受付中は show_live_count 次第で途中経過）
 - `/p/<slug>/present`：開票プレゼン（16:9投影。参加者は結果公開後のみ。`?key=…` を付ければ
   主催者は公開前でも開ける＝締切済みなら確定結果・受付中なら暫定）
-- `/p/<slug>/manage?key=…`：管理（共有URL・締切・結果公開）
+- `/p/<slug>/manage?key=…`：管理（共有URL・締切・結果公開。予約した締切／結果公開の時刻は、
+  結果を公開する前ならここで変更できる）
 
 ## 5. データモデル
 `poll(slug, status open|closed, close_at, results_open_at, require_captcha, show_live_count, admin_key_hash)` /
