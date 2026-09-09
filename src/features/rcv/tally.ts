@@ -16,6 +16,8 @@
  *   直前ラウンドの票数を比較し、同数なら更に前のラウンドへ遡る。第1ラウンドまで
  *   同数なら「くじ（by lot）」。くじは lotSeed から事前に確定する決定的順序で引く
  *   （再現・監査可能にするため）。lotSeed は通常 poll_id を渡す。
+ * - 同数だった事実とその解消方法は tiedWith / tiebreak に必ず記録する。順位切れと
+ *   同じで、扱いを隠さないのが本ツールの誠実さの要なので、表示側で開示する。
  */
 
 export type RcvBallot = string[]; // option_id を順位順に（先頭が第1希望）
@@ -27,6 +29,16 @@ export type RcvRound = {
   majority: number;
   /** このラウンドの冒頭で除外された候補（第1ラウンドは null）。 */
   elim: string | null;
+  /**
+   * 除外の時点で最下位に並んでいた候補すべて（除外された候補自身を含む）。
+   * 同数ではなかったラウンド・第1ラウンドは空配列。
+   */
+  tiedWith: string[];
+  /**
+   * 同数最下位をどう解消したか。"backward" = 前のラウンドまで遡った票数比較で決着、
+   * "lot" = 第1ラウンドまで同数だったのでくじ。同数でなければ null。
+   */
+  tiebreak: "backward" | "lot" | null;
   /** 除外候補が持っていた票数（= 移動する票の総数）。 */
   moved: number;
   /** 除外票の移動先ごとの票数（移動先候補id → 票数）。 */
@@ -66,15 +78,26 @@ function fnv1a(str: string): number {
   return h >>> 0;
 }
 
+/** 除外候補と、その決め方（同数だったか / どう解消したか）。 */
+type Elimination = {
+  elim: string;
+  tiedWith: string[];
+  tiebreak: "backward" | "lot" | null;
+};
+
 /**
  * 同数最下位のタイブレーク。backward-looking（直前ラウンドから遡って票数比較）→
  * それでも同数なら lotOrder（事前確定のくじ順）が最小の候補を除外する。
+ * 同数だった候補と解消方法も併せて返す（表示側で開示するため）。
  */
 function pickElimination(
   tiedAtMin: string[],
   rounds: RcvRound[],
   lotOrder: Map<string, number>
-): string {
+): Elimination {
+  if (tiedAtMin.length === 1) {
+    return { elim: tiedAtMin[0], tiedWith: [], tiebreak: null };
+  }
   let tied = tiedAtMin;
   for (let i = rounds.length - 2; i >= 0 && tied.length > 1; i--) {
     const snap = rounds[i].snap;
@@ -83,8 +106,9 @@ function pickElimination(
   }
   if (tied.length > 1) {
     tied = [...tied].sort((a, b) => (lotOrder.get(a) ?? 0) - (lotOrder.get(b) ?? 0));
+    return { elim: tied[0], tiedWith: [...tiedAtMin], tiebreak: "lot" };
   }
-  return tied[0];
+  return { elim: tied[0], tiedWith: [...tiedAtMin], tiebreak: "backward" };
 }
 
 export function tallyRcv(
@@ -118,7 +142,18 @@ export function tallyRcv(
     for (const id of ids) snap[id] = 0;
     return {
       rounds: [
-        { snap, majority: 1, elim: null, moved: 0, transfers: {}, toEx: 0, exhausted: 0, winner: null },
+        {
+          snap,
+          majority: 1,
+          elim: null,
+          tiedWith: [],
+          tiebreak: null,
+          moved: 0,
+          transfers: {},
+          toEx: 0,
+          exhausted: 0,
+          winner: null,
+        },
       ],
       total,
       order: ids,
@@ -147,6 +182,8 @@ export function tallyRcv(
       snap: count(),
       majority: Math.floor(total / 2) + 1,
       elim: null,
+      tiedWith: [],
+      tiebreak: null,
       moved: 0,
       transfers: {},
       toEx: 0,
@@ -167,8 +204,8 @@ export function tallyRcv(
     }
 
     const minVotes = Math.min(...aliveArr.map((c) => rec.snap[c]));
-    const tied = aliveArr.filter((c) => rec.snap[c] === minVotes);
-    const elim = pickElimination(tied, rounds, lotOrder);
+    const tiedAtMin = aliveArr.filter((c) => rec.snap[c] === minVotes);
+    const { elim, tiedWith, tiebreak } = pickElimination(tiedAtMin, rounds, lotOrder);
     const moved = rec.snap[elim];
     alive.delete(elim);
     elimRound[elim] = rounds.length;
@@ -194,6 +231,8 @@ export function tallyRcv(
       snap: count(),
       majority: Math.floor((total - exhausted) / 2) + 1,
       elim,
+      tiedWith,
+      tiebreak,
       moved,
       transfers,
       toEx,

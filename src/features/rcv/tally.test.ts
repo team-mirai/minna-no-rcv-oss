@@ -18,6 +18,11 @@ function ballots(...specs: Array<[RcvBallot, number]>): RcvBallot[] {
   return out;
 }
 
+/** tiedWith は生存候補の内部順に依存するので、比較は並べ替えてから行う。 */
+function sorted(ids: string[]): string[] {
+  return [...ids].sort();
+}
+
 /** 各ラウンドで「除外票 = 移動先合計 + 順位切れ増分」が成立すること（受け入れ条件2）。 */
 function assertConservation(t: ReturnType<typeof tallyRcv>) {
   for (let i = 1; i < t.rounds.length; i++) {
@@ -54,6 +59,9 @@ test("複数ラウンド: 最下位除外→次順位へ票が移り、過半数
   assert.equal(t.rounds[1].snap[B], 5);
   assert.equal(t.rounds[1].winner, B);
   assert.equal(t.elimRound[C], 1);
+  // 同数ではない除外なので、タイブレーク記録は空のまま（表示側は何も出さない）。
+  assert.equal(t.rounds[1].tiebreak, null);
+  assert.deepEqual(t.rounds[1].tiedWith, []);
   // 表示側が並べ替える際の基本順は R1 の得票降順
   assert.deepEqual(t.order, [A, B, C]);
   assertConservation(t);
@@ -75,6 +83,8 @@ test("順位切れ発生: 後続順位が無い票は exhausted に積まれ、�
   assert.equal(t.rounds[1].exhausted, 1);
   assert.equal(t.rounds[1].majority, 5); // floor(8/2)+1
   assert.equal(t.rounds[2].elim, B);
+  assert.equal(t.rounds[2].tiebreak, "backward");
+  assert.deepEqual(sorted(t.rounds[2].tiedWith), [A, B]);
   assert.equal(t.rounds[2].exhausted, 3);
   assert.equal(t.rounds[2].majority, 4); // floor(6/2)+1
   assert.equal(t.rounds[2].winner, A);
@@ -100,7 +110,13 @@ test("タイブレーク(backward): 直前ラウンドの票数で決まる", ()
   );
   assert.equal(t.rounds[1].elim, D);
   assert.equal(t.rounds[1].snap[C], 3);
+  // D は単独最下位。同数ではないラウンドに同数の記録を残さない。
+  assert.equal(t.rounds[1].tiebreak, null);
+  assert.deepEqual(t.rounds[1].tiedWith, []);
   assert.equal(t.rounds[2].elim, C, "同数最下位(B,C)は前ラウンドの票数が少ないCを除外");
+  // 同数だった事実と解消方法を残す（表示側がこれを開示する）。
+  assert.equal(t.rounds[2].tiebreak, "backward");
+  assert.deepEqual(sorted(t.rounds[2].tiedWith), [B, C]);
   assertConservation(t);
 });
 
@@ -112,6 +128,10 @@ test("タイブレーク(by lot): 全ラウンド同数なら lotSeed から決�
   // 決定的: 同じシードなら常に同じ経過・同じ勝者
   assert.deepEqual(t1.rounds, t2.rounds);
   assert.ok(t1.rounds[t1.rounds.length - 1].winner);
+  // 第1ラウンドまで遡っても同数なので「くじ」と記録される。
+  assert.equal(t1.rounds[1].tiebreak, "lot");
+  assert.deepEqual(sorted(t1.rounds[1].tiedWith), [A, B, C]);
+  assert.ok(t1.rounds[1].tiedWith.includes(t1.rounds[1].elim!));
   assertConservation(t1);
 });
 
@@ -130,6 +150,8 @@ test("有効票ゼロ・候補ゼロでも壊れない（未決着の単一ラ�
   assert.equal(empty.total, 0);
   assert.equal(empty.rounds.length, 1);
   assert.equal(empty.rounds[0].winner, null);
+  assert.equal(empty.rounds[0].tiebreak, null);
+  assert.deepEqual(empty.rounds[0].tiedWith, []);
   const noOptions = tallyRcv(ballots([[A], 1]), []);
   assert.equal(noOptions.total, 0);
   assert.equal(noOptions.rounds[0].winner, null);
