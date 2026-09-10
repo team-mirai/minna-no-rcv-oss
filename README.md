@@ -6,13 +6,21 @@
 > ⚠️ 本人確認をしない緩い一意性（1ブラウザ1票）のプロトタイプです。
 > **正式な選挙・議決には使えません。**
 
-設計の考え方は [`docs/design.md`](docs/design.md) を参照。
-
 ## 何がうれしいのか
 
 「1人1票で一番だけ選ぶ」ふつうの多数決は、似た候補に票が割れて「みんなの2番目に良い案」が
 消えがちです。RCV は候補を順位で選び、最下位を落として票を次順位へ移す、を過半数が出るまで
 繰り返すので、広く支持される選択が残りやすくなります。
+
+## ドキュメント
+
+| 知りたいこと | ファイル |
+| --- | --- |
+| 設計の考え方（ペルソナ・データモデル・信頼モデル） | [`docs/design.md`](docs/design.md) |
+| 投票の受理・締切・結果公開の仕組み（atomic 性、`close_at` / `results_open_at`、プレゼンモード） | [`docs/poll-lifecycle.md`](docs/poll-lifecycle.md) |
+| デプロイ（main マージ → DB マイグレーション → Vercel の直列 CD、必要な secret） | [`docs/deploy.md`](docs/deploy.md) |
+| マイグレーションの書き方・ファイル規約・手で当てたときの復旧 | [`docs/migrations.md`](docs/migrations.md) |
+| SNS シェア（OGP 画像）の実装メモ | [`docs/ogp.md`](docs/ogp.md) |
 
 ## UI / 体験
 
@@ -31,6 +39,9 @@
 - **管理ページ** … 参加URLのコピー＆QR表示（会場投影用）・投票数の自動更新・予約した締切と
   結果公開時刻の表示・締切の確認モーダル・「いま結果を公開する」。
 
+締切と結果公開を分ける仕組み、主催者だけがいつでもプレゼンモードを開ける理由は
+[`docs/poll-lifecycle.md`](docs/poll-lifecycle.md) を参照。
+
 ## アーキテクチャ
 
 - **Next.js 15（App Router）+ TypeScript + Tailwind CSS 4 + @phosphor-icons/react**
@@ -40,6 +51,8 @@
 - **poll ごとに完全独立**：「いま開催中の投票はどれか」のようなグローバル状態を持たない。
 - **アカウントレス**：参加は `/p/<slug>`、管理は `/p/<slug>/manage?key=<admin_key>`。
   管理キーは作成時に一度だけ発行し、DB にはハッシュだけ保存する。
+- **受理と締切は DB の行ロックだけで直列化**（締切後に票が入らないことを DB が保証）。
+  詳細は [`docs/poll-lifecycle.md`](docs/poll-lifecycle.md)。
 
 ```
 src/
@@ -62,109 +75,30 @@ supabase/migrations/
   ..._results_open_at.sql       結果公開時刻（締切と分離）
 ```
 
-## 投票受理の atomic 性
-
-満たしたい性質は 2 つです。**締切がコミットした後の票は絶対に入らない**ことと、
-**結果は締切後の不変データから計算され、何度計算しても同じになる**こと。
-
-素直に書くと「status を SELECT →選択肢を SELECT → upsert」の 3 往復・3 トランザクションに
-なり、検証した瞬間と書き込む瞬間の間に締切が入り得ます。ここを **DB の行ロックだけ** で
-構造的に解いています（advisory lock も Redis も不要）。
-
-1. **`submit_ballot`（単一 RPC・1 tx）** … `poll` 行を `FOR SHARE` で読み、status/close_at/
-   rankings 検証と `ballot` の upsert を同一トランザクションに閉じる。submit 同士は
-   `FOR SHARE` なのでブロックし合わず、高並行に耐える。
-2. **`close_poll`（UPDATE）** … poll 行の排他ロックを取るので、進行中の `submit_ballot`
-   がコミットするのを待ってから `closed` にする。これがコミットした後の受理は
-   `FOR SHARE` で `closed` を読んで弾かれる ＝ **締切後に票が入らないことを DB が保証**。
-3. **集計** … 締切後の不変データにのみ `tallyRcv` を実行し `poll_result` にスナップショット
-   （決定的なので冪等）。
-
-この直列化はローカル Postgres 16 で実証済みです（close が in-flight submit を待ち、close 後の
-submit が `poll_closed` になる）。
-
-## 締切（close_at）と結果公開（results_open_at）
-
-作成フォームで締切（任意）を指定できます。指定した時刻を過ぎると、
-
-- 受理は `submit_ballot` が `close_at` を見て `poll_closed` を返す（**DB が拒否する**）。
-- 参加ページは結果ページへ送り、管理ページ・結果ページを開いた時点で `ensureClosedIfDue` が
-  `status` を `closed` に確定させる（＝ cron 不要の遅延クローズ。締切直後に誰も開かなくても、
-  票が入らないこと自体は上の 1 で保証されている）。
-
-締切は指定しなくても構いません（管理URLの「投票を締め切る」を押すまで受け付け続ける）。
-
-**締切と結果公開は別の時刻**です。締切＝受付をやめる時刻、結果公開＝結果を見せる時刻で、
-「18時に締め切って、20時の配信で発表する」ように分けられます。
-
-- `results_open_at` が **null なら締切と同時に公開**（既定・これまでの挙動）。
-- 指定した場合、締切済みでもその時刻まで **参加者には結果ページ・プレゼンモードで結果を
-  出しません**。待機画面では集計そのものを呼ばないので、描画しないだけで props に載る
-  （＝ DevTools から読める）事故も起きません。
-- 発表を前倒ししたいときは、管理ページの「いま結果を公開する」で `results_open_at` を
-  現在時刻に更新します（締切は動かしません）。
-- 受付中の途中経過（`show_live_count`）はこれとは独立で、これまでどおりの挙動です。
-
-### 主催者はいつでもプレゼンモードを開ける
-
-配信・会場でこちらから発表するには、参加者に見せないまま主催者だけが開票画面を映せる必要が
-あります（結果を公開してから映す運用だと、読み上げる前に参加者のスマホに結果が出てしまう）。
-そのため **プレゼンモード（`/p/<slug>/present`）は管理キー付きURLならいつでも開けます**。
-
-- `?key=<管理キー>` を付けて開いたときだけ主催者とみなす（管理ページの検証と同じ
-  `verifyAdminKey`。ハッシュ照合で、キーそのものはDBに無い）。キーが無い／合わないアクセスは
-  これまでどおり待機画面。
-- 締切済み・公開待ちなら **確定結果**（`poll_result` のスナップショットと同じ・後から変わらない）、
-  まだ受付中なら **途中経過（暫定）**。どちらも画面右上にその旨のバッジを出す。
-- 何を映すかの判定は `src/lib/closeAt.ts` の `resolvePresentMode(status, resultsOpenAt, isAdmin)`
-  に集約（`final` / `live` / `standby`・テスト付き）。
-- 管理キーがURLに載るので、画面共有するときは全画面表示にしてURL欄を映さないこと。
-
-入力の検証と表示フォーマットは `src/lib/closeAt.ts`（純粋関数・テスト付き）にまとめてあり、
-表示は主催者と参加者で食い違わないよう **日本時間で固定** しています。結果を公開してよいかの
-判定も同じファイルの `isResultsOpen`（締切済み かつ 公開時刻を過ぎている）に集約しています。
-
 ## セットアップ
 
 ```bash
 npm ci                        # package-lock.json をそのまま使う（依存を足すときだけ npm install）
 cp .env.example .env          # SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / APP_SECRET を設定
-# Supabase プロジェクトにマイグレーションを適用（Supabase CLI）
-supabase db push              # もしくは supabase/migrations/*.sql を SQL エディタで実行
+supabase db push              # 自分の Supabase プロジェクトにマイグレーションを適用（docs/migrations.md）
 npm run dev
 ```
 
-`purge_expired_data()`（保存期間の削除）は関数を定義してあるだけで、**スケジュール登録は
-別途必要**です。手順は `supabase/migrations/*_retention.sql` のコメントを参照。
-
-## SNS シェア（OGP）
-
-チャットや SNS に URL を貼ったときのカードは、`next/og` で毎回サーバ描画している
-（画像アセットを持たない＝文言を変えてもデザイナー往復が要らない）。
-
-- 絵づくりは `src/features/og/card.tsx` 一箇所。各 `opengraph-image.tsx` は
-  「ラベル・見出し・説明」を渡すだけ。
-- 見出し（`og:title`）と説明は、各ページの `metadata.title` / `description` が
-  そのまま流れ込む。ページ側で `openGraph` オブジェクトは**定義しないこと**
-  （定義するとルートの `siteName` / `type` / `locale` が丸ごと消える）。詳細は
-  `src/app/layout.tsx` のコメント。
-- `/p/<slug>` と `/p/<slug>/results` は、お題をカード画像にも焼き込む。DB が引けなくても
-  汎用カードに倒して画像は必ず出す（`ogPollTitle`）。
-- 日本語は `assets/fonts/` のサブセットフォントで描く。`next.config.ts` の
-  `outputFileTracingIncludes` で本番バンドルに同梱している（外すと本番だけ 500）。
-- 独自ドメインが決まったら `NEXT_PUBLIC_SITE_URL` を設定する（`src/lib/siteUrl.ts`）。
-  未設定でも Vercel の環境変数から自動で決まる。
-
-確認は `npm run dev` して、`curl -o og.png localhost:3000/opengraph-image` で PNG を
-直接叩くのが早い。
-
-### テスト
+## テスト
 
 ```bash
 npm test          # 集計・行順・締切ロジックの受け入れテスト（node --test）
 npm run typecheck # tsc --noEmit
 npm run build     # next build
 ```
+
+## デプロイとマイグレーション
+
+main にマージすると、GitHub Actions が **本番 DB へのマイグレーション適用 → Vercel の本番デプロイ**
+をこの順で直列に実行します。本番 DB に手で SQL を当てないでください。
+
+- 流れ・必要な secret・落ちたときの見方: [`docs/deploy.md`](docs/deploy.md)
+- マイグレーションの書き方（expand / contract）・ファイル規約・履歴の復旧: [`docs/migrations.md`](docs/migrations.md)
 
 ## いまの範囲
 

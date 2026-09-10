@@ -1,0 +1,6 @@
+# Supabase CLI の設定。
+# CI (.github/workflows/deploy.yml) と手元の `supabase db push` が
+# supabase/migrations を同じように解決できるようにするための最小設定。
+# 本番の接続先はここではなく、CI では SUPABASE_DB_URL secret、
+# 手元では `supabase link` で指定する。
+project_id = "minna-no-rcv"
