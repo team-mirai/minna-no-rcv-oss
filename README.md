@@ -139,14 +139,20 @@ npm run dev
 
 ## デプロイとマイグレーション
 
-**main にマージすると、アプリのデプロイ（Vercel）と本番 DB へのマイグレーション適用
-（GitHub Actions）の両方が走ります。** 本番 DB に手で SQL を当てる必要はありません。
+**main にマージすると、GitHub Actions が「本番 DB へのマイグレーション適用 → Vercel の
+本番デプロイ開始」をこの順で直列に実行します。** 本番 DB に手で SQL を当てる必要は
+ありません。マイグレーションが失敗したらデプロイは始まりません（みらい議会
+[team-mirai/mirai-gikai](https://github.com/team-mirai/mirai-gikai) と同じ構成）。
 
 | いつ | 何が走るか | どこ |
 | --- | --- | --- |
 | PR を出す | test / typecheck / build ＋ migration ファイルの規約チェック | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
-| main にマージ | `supabase db push` で未適用のマイグレーションを本番 DB へ適用 → 本番 URL の疎通確認 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
-| main にマージ | アプリのビルドとデプロイ | Vercel の Git 連携 |
+| main にマージ | ① `supabase db push` で未適用のマイグレーションを本番 DB へ適用 → ② 成功したら Vercel の Deploy Hook を叩いて本番ビルドを開始 → ③ 本番 URL の疎通確認 | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
+
+Vercel の Git 連携による main の自動デプロイは [`vercel.json`](vercel.json) の
+`git.deploymentEnabled.main: false` で止めてあります（PR の Preview デプロイはそのまま）。
+main のデプロイは上の ② だけが起点です。**`VERCEL_DEPLOY_HOOK_URL` secret が無いと本番は
+一切デプロイされない**ので、下の「必要な secret」を先に設定してください。
 
 ### なぜ自動化したか
 
@@ -156,8 +162,9 @@ DB には列が無い状態になり、本番が 500（`column poll.results_open
 
 ### マイグレーションの書き方（順番の原則）
 
-マイグレーション適用と Vercel のデプロイは**並行して走る**ため、どちらが先に終わるかは
-保証されません。**どちらの順番でも壊れないマイグレーション**だけを書きます
+順序は「DB が先、アプリが後」に固定されていますが、Vercel のビルド中（数分）は**古いアプリが
+新しい DB を読む**時間があり、デプロイを戻すときは**古いアプリに戻す一方で DB は新しいまま**に
+なります。そのため引き続き、**古いアプリでも壊れないマイグレーション**だけを書きます
 （expand / contract）。
 
 - **足すのは自由**：列・テーブルの追加は `null 許容` か `default` 付きで足す。古いアプリが
@@ -180,10 +187,17 @@ DB には列が無い状態になり、本番が 500（`column poll.results_open
 | 名前 | 中身 |
 | --- | --- |
 | `SUPABASE_DB_URL` | 本番 Supabase の **Session pooler** の接続文字列（`postgresql://postgres.<ref>:<password>@aws-<n>-<region>.pooler.supabase.com:5432/postgres`） |
+| `VERCEL_DEPLOY_HOOK_URL` | Vercel の **Deploy Hook** の URL（`https://api.vercel.com/v1/integrations/deploy/prj_.../...`） |
 
-GitHub Actions のランナーは IPv4 のみなので、`db.<ref>.supabase.co` への直結ではなく
-pooler（ポート 5432 のセッションモード）を使います。Supabase Dashboard の Connect から
-取得できます。
+- `SUPABASE_DB_URL`：GitHub Actions のランナーは IPv4 のみなので、`db.<ref>.supabase.co` への
+  直結ではなく pooler（ポート 5432 のセッションモード）を使います。Supabase Dashboard の
+  Connect から取得できます。
+- `VERCEL_DEPLOY_HOOK_URL`：Vercel の Project Settings → Git → **Deploy Hooks** で、
+  Git Branch Name に `main` を指定して作成した Hook の URL です。この URL を知っていれば
+  誰でも本番デプロイを起動できるので、secret 以外の場所に書かないでください。
+
+どちらも未設定のままマージすると、ワークフローは何をすればよいかを書いたエラーで
+落ちます（黙って skip しません）。
 
 ## SNS シェア（OGP）
 
