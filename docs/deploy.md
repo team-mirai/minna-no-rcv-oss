@@ -59,7 +59,19 @@ Settings → Secrets and variables → Actions に次の 2 つを登録します
 落ちます（黙って skip しません）。マイグレーションを当てる前に 2 つまとめて確認するので、
 「DB だけ進んでデプロイできない」状態にはなりません。
 
+## この repo の GitHub Actions ポリシー
+
+Settings → Actions → General で **「GitHub 製と team-mirai 製のアクションのみ許可」＋「full-length
+SHA での固定を必須」** にしてあります（公開 OSS なのでサプライチェーンを絞る）。そのため
+第三者の action（`supabase/setup-cli` など）は使えず、起動時に `startup_failure` になります。
+Supabase CLI は [`deploy.yml`](../.github/workflows/deploy.yml) の中で GitHub Releases の tarball を
+**バージョン固定＋`checksums.txt` の sha256 検証**で入れています。CLI を上げるときは
+`SUPABASE_CLI_VERSION` を書き換えるだけです（checksum は同じリリースの `checksums.txt` から自動で取る）。
+
 ## 落ちたときの見方
+
+- **`startup_failure`（ジョブが 1 つも走らない）**：workflow ファイルの問題です。多くは上の
+  Actions ポリシーに引っかかる第三者 action の追加。run ページの Annotations に理由が出ます。
 
 - **secret 未設定**：最初のステップのエラーメッセージに何を登録すればよいか書いてあります。
 - **`db push` が「already exists」で落ちる**：過去に SQL エディタから手で当てたマイグレーションが

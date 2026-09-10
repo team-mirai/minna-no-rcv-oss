@@ -54,9 +54,24 @@ jobs:
           fi
           [ "$missing" = "0" ]
 
-      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
-        with:
-          version: latest
+      # Supabase CLI はリリースの tarball を直接入れる（第三者の GitHub Action は使わない）。
+      # この repo の Actions ポリシーは「GitHub 製か team-mirai 製のアクションのみ」なので
+      # supabase/setup-cli は起動時に弾かれる（内部で oven-sh/setup-bun も呼ぶため allowlist に
+      # 1 つ足しても連鎖して失敗する。2026-09-10 の初回 run で実際に startup_failure になった）。
+      # バージョンは固定し、checksums.txt で改ざんが無いことを検証してから展開する。
+      - name: Supabase CLI をインストール
+        env:
+          SUPABASE_CLI_VERSION: 2.117.0
+        run: |
+          set -euo pipefail
+          base="https://github.com/supabase/cli/releases/download/v${SUPABASE_CLI_VERSION}"
+          asset="supabase_${SUPABASE_CLI_VERSION}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "${base}/${asset}"
+          curl -fsSLO "${base}/checksums.txt"
+          grep " ${asset}\$" checksums.txt | sha256sum -c -
+          sudo tar -xzf "${asset}" -C /usr/local/bin supabase
+          supabase --version
 
       - name: 適用前の状況 (local / remote)
         run: supabase migration list --db-url "$SUPABASE_DB_URL"
