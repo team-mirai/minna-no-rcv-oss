@@ -7,6 +7,7 @@ import {
   getLiveResult,
 } from "@/server/polls";
 import { formatCloseAt, isResultsOpen } from "@/lib/closeAt";
+import { firstRoundOnly } from "@/features/rcv/firstRoundOnly";
 import ResultsView from "./ResultsView";
 
 // 集計は常に最新の票を反映させたいので毎回サーバで計算する。
@@ -91,13 +92,18 @@ export default async function ResultsPage({
 
   if (!resolved) notFound();
 
+  // 受付中は決選の中身（暫定勝者・除外・票の移動）を落として渡す。画面は1位票しか出して
+  // いないが、props は RSC のフライトデータとして HTML に載るため送った時点で読める
+  // （firstRoundOnly のコメント参照）。
+  const result = resolved.live ? firstRoundOnly(resolved.result) : resolved.result;
+
   return (
     <main className="mx-auto flex w-full max-w-[560px] flex-col gap-3.5 px-[18px] py-5 pb-16">
       <ResultsView
         slug={slug}
         title={poll.title}
         options={options}
-        result={resolved.result}
+        result={result}
         ballotCount={resolved.ballotCount}
         live={resolved.live}
       />
