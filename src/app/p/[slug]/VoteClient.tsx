@@ -596,9 +596,9 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
                 else poolButtonRefs.current.delete(o.id);
               }}
               onClick={() => add(o.id)}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-3.5 py-2 text-[13px] font-bold text-tm-teal-deep transition-[background-color,color,border-color,transform] duration-150 ease-out hover:border-tm-teal hover:bg-tm-teal hover:text-white active:scale-[0.96]"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-tm-teal-hover bg-white px-3.5 py-2 text-left text-[13px] font-bold text-tm-teal-deep transition-[background-color,color,border-color,transform] duration-150 ease-out hover:border-tm-teal hover:bg-tm-teal hover:text-white active:scale-[0.96]"
             >
-              <Plus size={12} />
+              <Plus size={12} className="shrink-0" />
               {o.label}
             </button>
           ))}
