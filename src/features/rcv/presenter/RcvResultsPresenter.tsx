@@ -534,6 +534,12 @@ function RoundSlide({
   let roundKicker: string;
   let roundNote: React.ReactNode;
   const elimName = name(round.elim);
+  // 同数最下位だった候補の並び。キャプションは2行に収める必要があるので3件を超えたら畳む。
+  const tiedNames = round.tiedWith.map((id) => `「${name(id)}」`);
+  const tiedLabel =
+    tiedNames.length > 3
+      ? `${tiedNames.slice(0, 2).join("")}ほか${tiedNames.length - 2}件`
+      : tiedNames.join("");
   if (round.winner && winnerShown) {
     roundKicker = "過半数に到達";
     roundNote = `「${name(round.winner)}」が有効票の過半数（${fmt(round.majority)}票）に到達しました。これで決定です。`;
@@ -543,8 +549,18 @@ function RoundSlide({
       ? `みなさんの投票用紙の“1位”を集計しました。`
       : `みなさんの投票用紙の“1位”を集計しました。過半数（有効票の50%超＝${fmt(round.majority)}票）に届いた候補はまだありません。ここから、最下位の候補を1つずつ除外していきます。`;
   } else if (!p1) {
-    roundKicker = "最下位の除外";
-    roundNote = `最下位の「${elimName}」（${fmt(round.moved)}票）を除外します。それぞれの投票用紙の“次の順位”へ票を移します。`;
+    // 同数だった事実と、それをどう解いたか（前ラウンド比較 / くじ）は必ず出す。
+    // 順位切れ行と同じで、扱いを隠さないのが本ツールの誠実さの要。
+    if (round.tiebreak === "lot") {
+      roundKicker = "最下位が同数（くじ）";
+      roundNote = `最下位が${tiedLabel}の同数で、第1ラウンドまで遡っても同数でした。事前に確定したくじ順で「${elimName}」（${fmt(round.moved)}票）を除外します（くじ順は投票開始前に確定）。`;
+    } else if (round.tiebreak === "backward") {
+      roundKicker = "最下位が同数";
+      roundNote = `最下位が${tiedLabel}の同数のため、前のラウンドの票数を遡って比べ、少なかった「${elimName}」（${fmt(round.moved)}票）を除外します。`;
+    } else {
+      roundKicker = "最下位の除外";
+      roundNote = `最下位の「${elimName}」（${fmt(round.moved)}票）を除外します。それぞれの投票用紙の“次の順位”へ票を移します。`;
+    }
   } else {
     roundKicker = "票の移動";
     const moved = `「${elimName}」の${fmt(round.moved)}票のうち、${fmt(round.moved - round.toEx)}票が次の順位の候補へ移りました（黄色い部分）。`;
@@ -638,7 +654,8 @@ function RoundSlide({
               tag = `R${elimIdx}で除外`;
               tagStyle = { fontSize: "1.1cqw", color: "var(--tm-gray-300)", whiteSpace: "nowrap" };
             } else if (elimNow && !p1) {
-              tag = "最下位・除外";
+              // 同数を解いて選ばれた除外なら、行のタグでもその旨を出す。
+              tag = round.tiebreak ? (round.tiebreak === "lot" ? "同数・くじで除外" : "同数・除外") : "最下位・除外";
               tagStyle = { ...chip, background: "var(--tm-black)", color: "var(--tm-white)" };
             } else if (elimNow && p1) {
               tag = "→ 次の順位へ";
