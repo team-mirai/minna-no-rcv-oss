@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { BrandLockup } from "@/components/Brand";
+import { GoogleAnalyticsLoader } from "@/components/GoogleAnalyticsLoader";
+import { gaMeasurementId } from "@/lib/googleAnalytics";
 import { siteUrl } from "@/lib/siteUrl";
 
 const DESCRIPTION =
@@ -53,6 +55,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // プレビューと next dev では出さない。VERCEL_ENV はビルド時に静的ページへ焼き込まれる。
+  // /admin では GoogleAnalyticsLoader が外す。gtag 自体はクライアントでのみ挿入する
+  // （静的 not-found は URL を持たず、SSR すると /admin の 404 まで preload される）。
+  const loadGa = process.env.VERCEL_ENV === "production";
+
   return (
     <html lang="ja" className="h-full antialiased">
       <head>
@@ -78,6 +85,7 @@ export default function RootLayout({
           </div>
         </header>
         <div className="flex-1">{children}</div>
+        {loadGa ? <GoogleAnalyticsLoader gaId={gaMeasurementId()} /> : null}
         <footer className="border-t border-tm-border-soft bg-tm-gray-50">
           <div className="mx-auto w-full max-w-[560px] px-[18px] py-5 text-center text-[12.5px] leading-[1.8] text-tm-fg-muted">
             <p className="m-0">

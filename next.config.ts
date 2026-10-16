@@ -7,18 +7,35 @@ const isDev = process.env.NODE_ENV === "development";
  *
  * script-src に 'unsafe-inline' が残っているのは、App Router が RSC のフライトデータを
  * インライン <script> で埋め込むため（外すには middleware で nonce を配る必要がある）。
- * このアプリは dangerouslySetInnerHTML / eval を一切使わず、ユーザー入力はすべて React の
- * 既定エスケープを通るので XSS の主戦場は元々狭い。ここで効かせたいのはむしろ
+ * このアプリ自身のコードは dangerouslySetInnerHTML / eval を使わない
+ * （gtag の初期化だけ @next/third-parties がインライン script で出す）。
+ * ユーザー入力はすべて React の既定エスケープを通るので XSS の主戦場は元々狭い。ここで効かせたいのはむしろ
  * frame-ancestors（クリックジャッキング）・base-uri・form-action・object-src の方。
  * 将来 nonce 方式へ移すときに 'unsafe-inline' を落とす。
+ *
+ * GA4（@next/third-parties の gtag.js）:
+ *   script は https://www.googletagmanager.com/gtag/js 。インラインの
+ *   gtag('config', id) は cookie_domain を渡さない。'unsafe-inline' は上の理由で既にある。
+ *   計測は fetch / sendBeacon（connect-src）と画像ビーコン（img-src）で
+ *   https://www.google-analytics.com/g/collect （リージョン時は *.google-analytics.com）と
+ *   https://analytics.google.com/g/collect （リージョン時は *.analytics.google.com）へ送る。
+ *   gtag 本体も googletagmanager.com へ connect / img する。
+ *   `*.` は apex（analytics.google.com）にはマッチしないので、apex は別に書く。
  */
+const gaHosts = [
+  "https://www.googletagmanager.com",
+  "https://*.google-analytics.com",
+  "https://*.analytics.google.com",
+  "https://analytics.google.com",
+].join(" ");
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' https://www.googletagmanager.com${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
-  "img-src 'self' data: blob:", // data: は管理ページの QR コード（qrcode の DataURL）
-  "connect-src 'self'",
+  `img-src 'self' data: blob: ${gaHosts}`, // data: は管理ページの QR コード（qrcode の DataURL）
+  `connect-src 'self' ${gaHosts}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
