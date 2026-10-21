@@ -142,6 +142,10 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
   const [justSubmitted, setJustSubmitted] = useState<"new" | "updated" | null>(null);
   // 送信成功の直後だけ開く受付完了ポップアップ（投票箱アニメ）。閉じると done 画面が残る。
   const [doneOpen, setDoneOpen] = useState(false);
+  // 受付完了ポップアップの初期フォーカス（見出し）と、閉じた後の戻り先（「順位を変更する」）。
+  // 開くきっかけの投票ボタンは done 画面への切り替えで消えるため、戻り先を明示する。
+  const doneHeadingRef = useRef<HTMLHeadingElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
@@ -517,6 +521,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
         )}
         {/* 受付中は何度でも上書き再投票できる（最後の送信が有効） */}
         <button
+          ref={editButtonRef}
           type="button"
           onClick={startEdit}
           className="flex items-center justify-center gap-2 rounded-full border border-tm-teal-hover bg-white px-4 py-3 text-[15px] font-bold tracking-[0.04em] text-tm-teal-deep transition-[background-color,color,border-color,transform] duration-150 ease-out hover:border-tm-teal hover:bg-tm-teal hover:text-white active:scale-[0.96]"
@@ -541,12 +546,18 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
           ariaLabel="受付完了"
           variant="center"
           panelClassName="px-[18px] pt-[26px] pb-5"
+          initialFocusRef={doneHeadingRef}
+          returnFocusRef={editButtonRef}
         >
           <div className="flex flex-col items-center gap-3 text-center">
             <BallotDoneArt />
-            <b className="text-[18px] tracking-[0.04em]">
+            <h2
+              ref={doneHeadingRef}
+              tabIndex={-1}
+              className="m-0 text-[18px] font-bold tracking-[0.04em] outline-none"
+            >
               {justSubmitted === "updated" ? "順位の変更を受け付けました" : "投票を受け付けました"}
-            </b>
+            </h2>
             <div className="self-stretch bg-tm-teal-100 rounded-[10px] px-4 py-2.5 flex flex-col gap-1.5 text-left">
               {(lastSubmitted ?? []).map((id, i) => (
                 <div key={id} className="flex items-center gap-2.5">
