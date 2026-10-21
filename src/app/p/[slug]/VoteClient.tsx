@@ -34,6 +34,7 @@ import {
 
 /**
  * 「あなたの投票」ミント箱の外枠＋見出し。rank / done の各フェーズはこの中に入る。
+ * 見出し階層は h1 お題（page.tsx）→ h2 あなたの投票 → h3 選択肢 / あなたの順位。
  * 移植元アプリの RcvBoard の VoteBox と同じ意匠。
  */
 function VoteBox({ children }: { children: ReactNode }) {
@@ -41,7 +42,7 @@ function VoteBox({ children }: { children: ReactNode }) {
     <div className="bg-tm-teal-100 rounded-[12px] p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2 border-b border-tm-teal-200 pb-2.5">
         <ListNumbers size={21} />
-        <b className="text-[17px] tracking-[0.04em]">あなたの投票</b>
+        <h2 className="m-0 text-[17px] font-bold tracking-[0.04em]">あなたの投票</h2>
       </div>
       {children}
     </div>
@@ -583,9 +584,11 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
       </b>
 
       <div className="flex flex-col gap-2">
-        <b className="text-[13px] text-tm-teal-deep">
-          選択肢 <span className="font-normal text-tm-teal-deep/70">（1つ以上）</span>
-        </b>
+        {/* 補足は見出しの外に置き、見出しの読み上げ名を「選択肢」だけにする */}
+        <div className="text-[13px] text-tm-teal-deep">
+          <h3 className="m-0 inline font-bold">選択肢</h3>{" "}
+          <span className="text-tm-teal-deep/70">（1つ以上）</span>
+        </div>
         <div className="flex flex-wrap gap-2">
           {poolItems.map((o) => (
             <button
@@ -610,14 +613,15 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
       </p>
 
       <div className="flex flex-col gap-2">
-        <b className="text-[13px] text-tm-teal-deep">
-          あなたの順位{" "}
-          <span className="text-[12px] font-normal text-tm-teal-deep/70">
+        <div className="text-[13px] text-tm-teal-deep">
+          <h3 className="m-0 inline font-bold">あなたの順位</h3>{" "}
+          <span className="text-[12px] text-tm-teal-deep/70">
             （ドラッグで並べ替え・
-            <X size={11} className="inline align-[-1px]" weight="bold" />
+            <X size={11} className="inline align-[-1px]" weight="bold" aria-hidden="true" />
+            <span className="sr-only">×ボタン</span>
             で取り消し）
           </span>
-        </b>
+        </div>
         {order.length === 0 ? (
           <div className="border border-dashed border-tm-gray-300 bg-white rounded-[10px] px-3.5 py-[13px] text-center text-[13px] leading-relaxed text-tm-gray-500">
             まだ選ばれていません

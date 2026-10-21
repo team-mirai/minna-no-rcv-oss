@@ -97,12 +97,13 @@ export default async function VotePage({
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-[5px]">
             <span className="text-[13px] font-bold tracking-[0.06em] text-tm-teal-deep">お題</span>
-            <b
-              className="font-[family-name:var(--tm-font-jp-display)] text-[21px] leading-[1.4] tracking-[0.02em]"
+            {/* お題をページの主見出しにする（見出しジャンプでの移動先）。見た目は従来の b と同じ */}
+            <h1
+              className="m-0 font-[family-name:var(--tm-font-jp-display)] text-[21px] leading-[1.4] tracking-[0.02em]"
               style={{ fontWeight: 900 }}
             >
               {poll.title}
-            </b>
+            </h1>
           </div>
         </div>
         {poll.description && (
