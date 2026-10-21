@@ -10,12 +10,12 @@ import {
   type PointerEvent,
   type ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
 import { submitBallotAction } from "@/app/actions";
 import type { PollOption, SubmitResult } from "@/server/polls";
 import { Modal } from "@/components/Modal";
 import { BallotDoneArt } from "@/components/BallotDoneArt";
 import { tapHaptic } from "@/lib/haptics";
+import { getSubmitErrorMessage } from "@/features/rcv/submitError";
 import {
   getPostSelectionFocusTarget,
   getSelectionAnnouncement,
@@ -131,7 +131,6 @@ function settleOffset(meta: DragMeta, target: number): number {
  * 上書き再投票できる（最後の送信が有効）。
  */
 export default function VoteClient({ slug, options, submittedRankings, showLiveCount }: Props) {
-  const router = useRouter();
   // 送信済みなら「投票済み」画面（done）で開く（受付中はそこから再編集できる）。
   const [phase, setPhase] = useState<Phase>(submittedRankings ? "done" : "rank");
   // 順位（option_id の配列・先頭が1位）。選択肢のタップで1位から積んでいく＝最初は空。
@@ -143,7 +142,17 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
   // 送信成功の直後だけ開く受付完了ポップアップ（投票箱アニメ）。閉じると done 画面が残る。
   const [doneOpen, setDoneOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // id は同じ文言のエラーが続いたときも別ノードとして描き直し、再度読み上げさせるため。
+  // resultsLink は締切後の送信で、エラー文に結果ページへのリンクを添えるか
+  const [error, setErrorState] = useState<{
+    text: string;
+    id: number;
+    resultsLink: boolean;
+  } | null>(null);
+  const errorSeq = useRef(0);
+  const setError = useCallback((text: string | null, resultsLink = false) => {
+    setErrorState(text === null ? null : { text, id: ++errorSeq.current, resultsLink });
+  }, []);
   const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
 
   const optById = useMemo(() => new Map(options.map((o) => [o.id, o])), [options]);
@@ -456,35 +465,24 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
         setLastSubmitted([...order]);
         setPhase("done");
         setDoneOpen(true);
-      } else if (r === "poll_closed") {
-        setError("この投票は締め切られました。結果ページへ移動します…");
-        setTimeout(() => router.push(`/p/${slug}/results`), 1200);
-      } else if (r === "captcha_required") {
-        setError("この投票は人間確認が必要な設定ですが、確認機能が未対応のため送信できません。");
-      } else if (r === "poll_not_found") {
-        setError("投票が見つかりませんでした。URLをご確認ください。");
-      } else if (r === "cookie_issued") {
-        setError(
-          "Cookieを保存できないため投票を受け付けられませんでした。プライベートブラウズやCookieのブロック設定をご確認のうえ、もう一度お試しください。"
-        );
-      } else if (r === "rate_limited") {
-        setError("送信が集中しています。少し時間をおいてから、もう一度お試しください。");
       } else {
-        setError("送信できませんでした。もう一度お試しください。");
+        // 締切は自動で結果ページへ移さず、リンクを添える。読み上げの途中で画面が
+        // 変わらないようにするため（時間制限を設けない・WCAG 2.2.1）
+        setError(getSubmitErrorMessage(r), r === "poll_closed");
       }
     } catch {
-      setError("通信エラーが発生しました。");
+      setError(getSubmitErrorMessage("network_error"));
     } finally {
       setSubmitting(false);
     }
-  }, [slug, order, lastSubmitted, router]);
+  }, [slug, order, lastSubmitted, setError]);
 
   // done →「順位を変更する」→ rank。order は受理済み順位のまま＝そこから編集を始める。
   const startEdit = useCallback(() => {
     setJustSubmitted(null);
     setError(null);
     setPhase("rank");
-  }, []);
+  }, [setError]);
 
   // 編集をやめて受理済みの順位（lastSubmitted）へ戻す。未送信の並べ替えは破棄。
   const cancelEdit = useCallback(() => {
@@ -492,7 +490,7 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
     setOrder([...lastSubmitted]);
     setError(null);
     setPhase("done");
-  }, [lastSubmitted]);
+  }, [lastSubmitted, setError]);
 
   if (phase === "done") {
     return (
@@ -691,11 +689,30 @@ export default function VoteClient({ slug, options, submittedRankings, showLiveC
         )}
       </div>
 
-      {error && (
-        <p className="rounded-[10px] bg-red-50 px-3 py-2 text-center text-[13px] text-tm-red ring-1 ring-inset ring-red-200 m-0">
-          {error}
-        </p>
-      )}
+      {/* 送信エラーの通知領域。role="alert" の要素は常に置いておき、中身だけ差し替える
+          （エラー発生と同時に領域ごと挿入すると、読み上げられないスクリーンリーダーがある）。
+          空のときは VoteBox の gap-3 ぶんを打ち消し、従来どおりの余白にする */}
+      <div role="alert" aria-atomic="true" className="empty:-mt-3">
+        {error && (
+          <p
+            key={error.id}
+            className="rounded-[10px] bg-red-50 px-3 py-2 text-center text-[13px] text-tm-red ring-1 ring-inset ring-red-200 m-0"
+          >
+            {error.text}
+            {error.resultsLink && (
+              <>
+                {" "}
+                <a
+                  href={`/p/${slug}/results`}
+                  className="font-bold text-tm-red underline underline-offset-2"
+                >
+                  結果ページを見る
+                </a>
+              </>
+            )}
+          </p>
+        )}
+      </div>
 
       <div className="border-t border-tm-teal-200 pt-3 flex flex-col gap-2.5">
         <button
